@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biblioteca Personal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Lora:ital,wght@0,400;1,500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --tommen-blue: #1a2a44; 
+            --tommen-green: #2d4c3e; 
+            --st-pats-gold: #c5a059; 
+            --cloud-grey: #e2e8f0;
+            --dark-bg: #0f172a;
+        }
+
+        body {
+            font-family: 'Lora', serif;
+            background-color: var(--dark-bg);
+            background-image: linear-gradient(rgba(26, 42, 68, 0.8), rgba(15, 23, 42, 1));
+            color: var(--cloud-grey);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; }
+
+        header {
+            text-align: center;
+            padding: 50px 0;
+            border-bottom: 2px solid var(--st-pats-gold);
+            margin-bottom: 40px;
+        }
+
+        h1 { 
+            font-family: 'Oswald', sans-serif; 
+            font-size: 3.5rem; 
+            text-transform: uppercase; 
+            letter-spacing: 3px;
+            margin: 0;
+            color: white;
+            text-shadow: 2px 2px var(--tommen-green);
+        }
+
+        .stats { 
+            font-family: 'Oswald', sans-serif;
+            font-size: 1rem; 
+            color: var(--st-pats-gold);
+            letter-spacing: 2px;
+            margin-top: 10px;
+        }
+
+        .nav-controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+        }
+
+        input#searchInput {
+            flex: 1;
+            padding: 15px;
+            border: 1px solid var(--tommen-green);
+            background: rgba(255,255,255,0.05);
+            color: white;
+            font-family: 'Lora', serif;
+            border-radius: 4px;
+        }
+
+        .btn {
+            padding: 15px 25px;
+            border: none;
+            cursor: pointer;
+            font-family: 'Oswald', sans-serif;
+            text-transform: uppercase;
+            transition: 0.3s;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        .btn-main { background: var(--tommen-green); color: white; border-bottom: 3px solid #1a3329; }
+        .btn-saga { background: var(--tommen-blue); color: white; border-bottom: 3px solid #0d1624; }
+        .btn-back { background: transparent; color: var(--st-pats-gold); border: 1px solid var(--st-pats-gold); margin-bottom: 20px; }
+        
+        /* Nuevo estilo para el botón Cancelar */
+        .btn-cancel { 
+            background: transparent; 
+            color: var(--st-pats-gold); 
+            border: 1px solid var(--st-pats-gold);
+            margin-top: 10px;
+            width: 100%;
+        }
+
+        .btn:hover { transform: translateY(-2px); filter: brightness(1.2); }
+        .btn-cancel:hover { background: rgba(197, 160, 89, 0.1); }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 30px;
+        }
+
+        .saga-card {
+            background: rgba(30, 41, 59, 0.5);
+            border: 2px dashed var(--st-pats-gold);
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.3s;
+            border-radius: 8px;
+        }
+
+        .saga-card:hover { background: rgba(197, 160, 89, 0.1); }
+        .saga-card h3 { font-family: 'Oswald', sans-serif; font-size: 1.6rem; margin: 0; color: white; }
+        .saga-card span { color: var(--st-pats-gold); font-size: 0.8rem; text-transform: uppercase; }
+
+        .book-card {
+            background: #1e293b;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .book-card img { width: 100%; height: 340px; object-fit: cover; }
+        .book-content { padding: 15px; }
+        .book-title { font-family: 'Oswald', sans-serif; font-size: 1.2rem; color: white; margin: 0; }
+        .book-author { color: var(--st-pats-gold); font-style: italic; font-size: 0.9rem; margin-bottom: 10px; }
+        .stars { color: #facc15; margin-bottom: 10px; }
+        .opinion { font-size: 0.85rem; border-left: 2px solid var(--tommen-green); padding-left: 10px; line-height: 1.5; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 1000;
+            justify-content: center; align-items: center;
+        }
+
+        .modal-content {
+            background: #1e293b;
+            padding: 30px;
+            width: 90%; max-width: 400px;
+            border: 2px solid var(--tommen-green);
+        }
+
+        form input, form textarea, form select {
+            width: 100%; margin-bottom: 15px; padding: 12px;
+            background: #0f172a; border: 1px solid var(--tommen-green);
+            color: white; box-sizing: border-box; font-family: 'Lora';
+        }
+
+        .delete-btn { background: none; border: none; color: #ff6b6b; cursor: pointer; margin-top: 15px; font-family: 'Oswald'; text-transform: uppercase; font-size: 0.7rem; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1 id="viewTitle">Biblioteca Personal</h1>
+        <div class="stats" id="mainStats">0 LIBROS REGISTRADOS</div>
+    </header>
+
+    <div id="navigationControls">
+        <button id="btnBack" class="btn btn-back hidden">← VOLVER A LA BIBLIOTECA</button>
+        <div class="nav-controls">
+            <input type="text" id="searchInput" placeholder="Buscar título o autor...">
+            <button id="addBookBtn" class="btn btn-main">+ AÑADIR LIBRO</button>
+            <button id="addSagaBtn" class="btn btn-saga">+ CREAR SAGA</button>
+        </div>
+    </div>
+
+    <div id="mainGrid" class="grid"></div>
+</div>
+
+<div id="bookModal" class="modal">
+    <div class="modal-content">
+        <h2 style="font-family: 'Oswald'; color: var(--st-pats-gold)">AÑADIR LIBRO</h2>
+        <form id="bookForm">
+            <input type="text" id="title" placeholder="Título" required>
+            <input type="text" id="author" placeholder="Autor/a" required>
+            <input type="url" id="cover" placeholder="URL de la Imagen" required>
+            <select id="rating" required>
+                <option value="0">Valoracion</option>
+                <option value="5">⭐⭐⭐⭐⭐</option>
+                <option value="4">⭐⭐⭐⭐</option>
+                <option value="3">⭐⭐⭐</option>
+                <option value="2">⭐⭐</option>
+                <option value="1">⭐</option>
+            </select>
+            <textarea id="opinion" placeholder="Opinión (Opcional)" rows="3"></textarea>
+            <button type="submit" class="btn btn-main" style="width: 100%">GUARDAR</button>
+            <button type="button" class="btn btn-cancel" onclick="closeModals()">CANCELAR</button>
+        </form>
+    </div>
+</div>
+
+<div id="sagaModal" class="modal">
+    <div class="modal-content">
+        <h2 style="font-family: 'Oswald'; color: var(--st-pats-gold)">NUEVA SAGA</h2>
+        <form id="sagaForm">
+            <input type="text" id="sagaName" placeholder="Nombre de la saga" required>
+            <button type="submit" class="btn btn-saga" style="width: 100%">CREAR</button>
+            <button type="button" class="btn btn-cancel" onclick="closeModals()">CANCELAR</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    let library = JSON.parse(localStorage.getItem('myLibraryStorage')) || { books: [], sagas: [] };
+    let currentSagaId = null;
+
+    const mainGrid = document.getElementById('mainGrid');
+    const viewTitle = document.getElementById('viewTitle');
+    const btnBack = document.getElementById('btnBack');
+    const searchInput = document.getElementById('searchInput');
+
+    function save() {
+        localStorage.setItem('myLibraryStorage', JSON.stringify(library));
+        render();
+    }
+
+    function render(filter = '') {
+        mainGrid.innerHTML = '';
+        const search = filter.toLowerCase();
+
+        if (currentSagaId) {
+            const saga = library.sagas.find(s => s.id === currentSagaId);
+            viewTitle.innerText = saga.name;
+            btnBack.classList.remove('hidden');
+            document.getElementById('addSagaBtn').classList.add('hidden');
+            saga.books.filter(b => b.title.toLowerCase().includes(search)).forEach(book => mainGrid.appendChild(createBookCard(book, true)));
+        } else {
+            viewTitle.innerText = "Biblioteca Personal";
+            btnBack.classList.add('hidden');
+            document.getElementById('addSagaBtn').classList.remove('hidden');
+
+            library.sagas.filter(s => s.name.toLowerCase().includes(search)).forEach(saga => {
+                const card = document.createElement('div');
+                card.className = 'saga-card';
+                card.innerHTML = `<h3>${saga.name}</h3><span>${saga.books.length} LIBROS</span><br>
+                                  <button class="delete-btn" onclick="deleteSaga(event, ${saga.id})">Eliminar Saga</button>`;
+                card.onclick = () => { currentSagaId = saga.id; render(); };
+                mainGrid.appendChild(card);
+            });
+
+            library.books.filter(b => b.title.toLowerCase().includes(search)).forEach(book => mainGrid.appendChild(createBookCard(book, false)));
+        }
+        updateStats();
+    }
+
+    function createBookCard(book, isInsideSaga) {
+        const div = document.createElement('div');
+        div.className = 'book-card';
+        div.innerHTML = `
+            <img src="${book.cover}" onerror="this.src='https://via.placeholder.com/240x340?text=Sin+Imagen'">
+            <div class="book-content">
+                <p class="book-title">${book.title}</p>
+                <p class="book-author">${book.author}</p>
+                <div class="stars">${'★'.repeat(book.rating)}${'☆'.repeat(5-book.rating)}</div>
+                ${book.opinion ? `<div class="opinion">${book.opinion}</div>` : ''}
+                <button class="delete-btn" onclick="deleteBook(event, ${book.id}, ${isInsideSaga})">Borrar</button>
+            </div>
+        `;
+        return div;
+    }
+
+    document.getElementById('bookForm').onsubmit = (e) => {
+        e.preventDefault();
+        const book = {
+            id: Date.now(),
+            title: document.getElementById('title').value,
+            author: document.getElementById('author').value,
+            cover: document.getElementById('cover').value,
+            rating: parseInt(document.getElementById('rating').value),
+            opinion: document.getElementById('opinion').value
+        };
+        if (currentSagaId) library.sagas.find(s => s.id === currentSagaId).books.push(book);
+        else library.books.push(book);
+        save();
+        closeModals();
+        e.target.reset();
+    };
+
+    document.getElementById('sagaForm').onsubmit = (e) => {
+        e.preventDefault();
+        library.sagas.push({ id: Date.now(), name: document.getElementById('sagaName').value, books: [] });
+        save();
+        closeModals();
+        e.target.reset();
+    };
+
+    function deleteBook(e, id, isInsideSaga) {
+        e.stopPropagation();
+        if(!confirm("¿Borrar este libro?")) return;
+        if (isInsideSaga) {
+            const saga = library.sagas.find(s => s.id === currentSagaId);
+            saga.books = saga.books.filter(b => b.id !== id);
+        } else library.books = library.books.filter(b => b.id !== id);
+        save();
+    }
+
+    function deleteSaga(e, id) {
+        e.stopPropagation();
+        if(!confirm("¿Borrar saga y todos sus libros?")) return;
+        library.sagas = library.sagas.filter(s => s.id !== id);
+        save();
+    }
+
+    function updateStats() {
+        let total = library.books.length;
+        library.sagas.forEach(s => total += s.books.length);
+        document.getElementById('mainStats').innerText = `${total} LIBROS REGISTRADOS`;
+    }
+
+    const closeModals = () => { document.querySelectorAll('.modal').forEach(m => m.style.display = 'none'); };
+    document.getElementById('addBookBtn').onclick = () => document.getElementById('bookModal').style.display = 'flex';
+    document.getElementById('addSagaBtn').onclick = () => document.getElementById('sagaModal').style.display = 'flex';
+    btnBack.onclick = () => { currentSagaId = null; render(); };
+    searchInput.oninput = (e) => render(e.target.value);
+
+    render();
+</script>
+
+</body>
+</html>
