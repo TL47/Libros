@@ -1,4 +1,4 @@
-<!-- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 
 <head>
@@ -278,6 +278,24 @@
             margin-bottom: 10px;
             text-transform: uppercase;
         }
+
+        .sync-controls {
+            margin-top: 60px;
+            padding: 20px;
+            border-top: 1px dashed rgba(197, 160, 89, 0.3);
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn-sync {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--st-pats-gold);
+            border: 1px solid var(--st-pats-gold);
+            font-size: 0.75rem;
+            padding: 10px 15px;
+        }
     </style>
 </head>
 
@@ -299,6 +317,17 @@
         </div>
 
         <div id="mainGrid" class="grid"></div>
+
+        <div id="mainGrid" class="grid"></div>
+
+        <div class="sync-controls">
+            <button onclick="copyToClipboard()" class="btn btn-sync">📤 COPIAR BIBLIOTECA (PARA PEGAR EN
+                GITHUB)</button>
+            <button onclick="importFromClipboard()" class="btn btn-sync">📥 IMPORTAR / PEGAR AQUÍ</button>
+        </div>
+
+    </div>
+
     </div>
 
     <div id="bookModal" class="modal">
@@ -337,6 +366,8 @@
         </div>
     </div>
 
+
+
     <script>
         let library = JSON.parse(localStorage.getItem('myLibraryStorageV2')) || { books: [], sagas: [] };
         let currentSagaId = null;
@@ -374,6 +405,32 @@
             localStorage.setItem('myLibraryStorageV2', JSON.stringify(library));
             if (shouldRender) render();
             updateStats();
+        }
+
+        function copyToClipboard() {
+            const data = JSON.stringify(library);
+            navigator.clipboard.writeText(data).then(() => {
+                alert("¡Biblioteca copiada! Ahora ve a tu página de GitHub Pages y dale al botón de Importar.");
+            });
+        }
+
+        function importFromClipboard() {
+            const data = prompt("Pega aquí el código que has copiado de tu versión local:");
+            if (data) {
+                try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.books && parsed.sagas) {
+                        if (confirm("¿Quieres sobrescribir tu biblioteca actual con los datos pegados?")) {
+                            library = parsed;
+                            save();
+                        }
+                    } else {
+                        alert("El código no parece ser válido.");
+                    }
+                } catch (e) {
+                    alert("Error al procesar los datos.");
+                }
+            }
         }
 
         function render(filter = '') {
@@ -438,6 +495,13 @@
         </div>
     `;
             return div;
+        }
+
+        function save(shouldRender = true) {
+            // IMPORTANTE: Asegúrate de que el nombre del storage sea el mismo en Local y GitHub
+            localStorage.setItem('myLibrarySyncV1', JSON.stringify(library));
+            if (shouldRender) render();
+            updateStats();
         }
 
         // Lógica para editar
@@ -552,379 +616,4 @@
 
 </body>
 
-</html> -->
-
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Biblioteca Personal</title>
-    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Lora:ital,wght@0,400;1,500&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
-    <style>
-        :root {
-            --tommen-blue: #1a2a44; 
-            --tommen-green: #2d4c3e; 
-            --st-pats-gold: #c5a059; 
-            --cloud-grey: #e2e8f0;
-            --dark-bg: #0f172a;
-            --card-shadow: 0 10px 20px rgba(0,0,0,0.3);
-        }
-
-        body {
-            font-family: 'Lora', serif;
-            background-color: var(--dark-bg);
-            background-image: linear-gradient(rgba(26, 42, 68, 0.8), rgba(15, 23, 42, 1));
-            color: var(--cloud-grey);
-            margin: 0; padding: 20px; min-height: 100vh;
-        }
-
-        .container { max-width: 1100px; margin: 0 auto; padding-bottom: 80px; }
-
-        header {
-            text-align: center; padding: 50px 0;
-            border-bottom: 2px solid var(--st-pats-gold);
-            margin-bottom: 40px;
-        }
-
-        h1 { 
-            font-family: 'Oswald', sans-serif; font-size: 3.5rem; 
-            text-transform: uppercase; letter-spacing: 3px; margin: 0;
-            color: white; text-shadow: 2px 2px var(--tommen-green);
-        }
-
-        .stats { 
-            font-family: 'Oswald', sans-serif; font-size: 1rem; 
-            color: var(--st-pats-gold); letter-spacing: 2px; margin-top: 10px;
-        }
-
-        .nav-controls {
-            display: flex; gap: 15px; margin-bottom: 40px; flex-wrap: wrap;
-        }
-
-        input#searchInput {
-            flex: 1; padding: 15px; border: 1px solid var(--tommen-green);
-            background: rgba(255,255,255,0.05); color: white;
-            font-family: 'Lora', serif; border-radius: 4px;
-        }
-
-        .btn {
-            padding: 15px 25px; border: none; cursor: pointer;
-            font-family: 'Oswald', sans-serif; text-transform: uppercase;
-            transition: 0.3s; border-radius: 4px; font-weight: bold;
-        }
-
-        .btn-main { background: var(--tommen-green); color: white; border-bottom: 3px solid #1a3329; }
-        .btn-saga { background: var(--tommen-blue); color: white; border-bottom: 3px solid #0d1624; }
-        .btn-back { background: transparent; color: var(--st-pats-gold); border: 1px solid var(--st-pats-gold); margin-bottom: 20px; }
-        .btn-cancel { background: transparent; color: var(--st-pats-gold); border: 1px solid var(--st-pats-gold); margin-top: 10px; width: 100%; }
-        
-        .sync-controls {
-            margin-top: 60px;
-            padding: 20px;
-            border-top: 1px dashed rgba(197, 160, 89, 0.3);
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .btn-sync {
-            background: rgba(255,255,255,0.05);
-            color: var(--st-pats-gold);
-            border: 1px solid var(--st-pats-gold);
-            font-size: 0.75rem;
-            padding: 10px 15px;
-        }
-
-        .grid {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 30px;
-        }
-
-        /* DISEÑO DE SAGA */
-        .saga-card {
-            background: linear-gradient(145deg, #1e293b, #161e2d);
-            border: 2px solid var(--st-pats-gold);
-            outline: 1px solid var(--st-pats-gold);
-            outline-offset: -8px;
-            padding: 20px; text-align: center; cursor: grab; border-radius: 12px;
-            box-shadow: var(--card-shadow); display: flex; flex-direction: column; justify-content: center;
-            min-height: 520px; transition: 0.3s;
-        }
-        .saga-card h3 { font-family: 'Oswald', sans-serif; font-size: 1.8rem; margin: 0; color: white; text-transform: uppercase; }
-        .saga-card span { color: var(--st-pats-gold); font-size: 0.9rem; letter-spacing: 2px; margin-top: 10px; display: block; }
-
-        /* DISEÑO DE LIBRO */
-        .book-card {
-            background: #1e293b; border-radius: 12px; overflow: hidden;
-            border: 1px solid rgba(255,255,255,0.1); cursor: grab;
-            display: flex; flex-direction: column; box-shadow: var(--card-shadow); transition: 0.3s;
-        }
-        .book-card img { width: 100%; height: 380px; object-fit: cover; pointer-events: none; }
-        .book-content { padding: 18px; flex-grow: 1; display: flex; flex-direction: column; }
-        .book-title { font-family: 'Oswald', sans-serif; font-size: 1.25rem; color: white; margin: 0; }
-        .book-author { color: var(--st-pats-gold); font-style: italic; font-size: 0.95rem; margin-bottom: 10px; }
-        
-        .status-reading {
-            background: var(--tommen-green); color: white; font-family: 'Oswald', sans-serif;
-            font-size: 0.8rem; padding: 4px 12px; border-radius: 20px; display: inline-block;
-            letter-spacing: 1px; margin-bottom: 12px; text-transform: uppercase; width: fit-content;
-        }
-
-        .stars { color: #facc15; margin-bottom: 12px; }
-        .opinion { font-size: 0.85rem; border-left: 2px solid var(--tommen-green); padding-left: 10px; line-height: 1.5; color: #cbd5e1; font-style: italic; margin-bottom: 15px; }
-
-        .card-actions { display: flex; gap: 15px; margin-top: auto; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px; }
-        .action-btn { background: none; border: none; cursor: pointer; font-family: 'Oswald'; text-transform: uppercase; font-size: 0.75rem; font-weight: bold; }
-        .edit-btn { color: var(--st-pats-gold); }
-        .delete-btn { color: #ff6b6b; }
-
-        .modal {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(5px);
-        }
-        .modal-content {
-            background: #1e293b; padding: 30px; width: 90%; max-width: 400px; border: 2px solid var(--st-pats-gold); border-radius: 8px;
-        }
-        form input, form textarea, form select {
-            width: 100%; margin-bottom: 15px; padding: 12px; background: #0f172a; border: 1px solid var(--tommen-green); color: white; font-family: 'Lora'; box-sizing: border-box;
-        }
-        .hidden { display: none; }
-    </style>
-</head>
-<body>
-
-<div class="container">
-    <header>
-        <h1 id="viewTitle">Biblioteca Personal</h1>
-        <div class="stats" id="mainStats">0 LIBROS REGISTRADOS</div>
-    </header>
-
-    <div id="navigationControls">
-        <button id="btnBack" class="btn btn-back hidden">← VOLVER A LA BIBLIOTECA</button>
-        <div class="nav-controls">
-            <input type="text" id="searchInput" placeholder="Buscar título o autor...">
-            <button id="addBookBtn" class="btn btn-main">+ AÑADIR LIBRO</button>
-            <button id="addSagaBtn" class="btn btn-saga">+ CREAR SAGA</button>
-        </div>
-    </div>
-
-    <div id="mainGrid" class="grid"></div>
-
-    <div class="sync-controls">
-        <button onclick="copyToClipboard()" class="btn btn-sync">📤 COPIAR BIBLIOTECA (PARA PEGAR EN GITHUB)</button>
-        <button onclick="importFromClipboard()" class="btn btn-sync">📥 IMPORTAR / PEGAR AQUÍ</button>
-    </div>
-</div>
-
-<div id="bookModal" class="modal">
-    <div class="modal-content">
-        <h2 id="bookModalTitle" style="font-family: 'Oswald'; color: var(--st-pats-gold)">AÑADIR LIBRO</h2>
-        <form id="bookForm">
-            <input type="hidden" id="editBookId">
-            <input type="text" id="title" placeholder="Título" required>
-            <input type="text" id="author" placeholder="Autor/a" required>
-            <input type="url" id="cover" placeholder="URL de la Imagen" required>
-            <select id="rating" required>
-                <option value="0">Valoración</option>
-                <option value="6">📖 Leyendo</option>
-                <option value="5">⭐⭐⭐⭐⭐</option>
-                <option value="4">⭐⭐⭐⭐</option>
-                <option value="3">⭐⭐⭐</option>
-                <option value="2">⭐⭐</option>
-                <option value="1">⭐</option>
-            </select>
-            <textarea id="opinion" placeholder="Opinión (Opcional)" rows="3"></textarea>
-            <button type="submit" class="btn btn-main" style="width: 100%">GUARDAR</button>
-            <button type="button" class="btn btn-cancel" onclick="closeModals()">CANCELAR</button>
-        </form>
-    </div>
-</div>
-
-<div id="sagaModal" class="modal">
-    <div class="modal-content">
-        <h2 id="sagaModalTitle" style="font-family: 'Oswald'; color: var(--st-pats-gold)">NUEVA SAGA</h2>
-        <form id="sagaForm">
-            <input type="hidden" id="editSagaId">
-            <input type="text" id="sagaName" placeholder="Nombre de la saga" required>
-            <button type="submit" class="btn btn-saga" style="width: 100%">CREAR</button>
-            <button type="button" class="btn btn-cancel" onclick="closeModals()">CANCELAR</button>
-        </form>
-    </div>
-</div>
-
-<script>
-    // Versión de almacenamiento única para evitar conflictos
-    let library = JSON.parse(localStorage.getItem('myLibrarySyncV1')) || { books: [], sagas: [] };
-    let currentSagaId = null;
-    const mainGrid = document.getElementById('mainGrid');
-
-    new Sortable(mainGrid, {
-        animation: 150,
-        onEnd: function() {
-            const items = Array.from(mainGrid.children);
-            const ids = items.map(item => parseInt(item.dataset.id));
-            if (currentSagaId) {
-                const saga = library.sagas.find(s => s.id === currentSagaId);
-                saga.books.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
-            } else {
-                library.sagas.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
-                library.books.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
-            }
-            save(false);
-        }
-    });
-
-    function save(shouldRender = true) {
-        localStorage.setItem('myLibrarySyncV1', JSON.stringify(library));
-        if (shouldRender) render();
-        updateStats();
-    }
-
-    // --- FUNCIONES DE COPIAR Y PEGAR ENTRE SITIOS ---
-    function copyToClipboard() {
-        const data = JSON.stringify(library);
-        navigator.clipboard.writeText(data).then(() => {
-            alert("¡Biblioteca copiada! Ahora ve a tu página de GitHub Pages y dale al botón de Importar.");
-        });
-    }
-
-    function importFromClipboard() {
-        const data = prompt("Pega aquí el código que has copiado de tu versión local:");
-        if (data) {
-            try {
-                const parsed = JSON.parse(data);
-                if (parsed.books && parsed.sagas) {
-                    if (confirm("¿Quieres sobrescribir tu biblioteca actual con los datos pegados?")) {
-                        library = parsed;
-                        save();
-                    }
-                } else {
-                    alert("El código no parece ser válido.");
-                }
-            } catch (e) {
-                alert("Error al procesar los datos. Asegúrate de copiar el código completo.");
-            }
-        }
-    }
-
-    function render(filter = '') {
-        mainGrid.innerHTML = '';
-        const search = filter.toLowerCase();
-
-        if (currentSagaId) {
-            const saga = library.sagas.find(s => s.id === currentSagaId);
-            viewTitle.innerText = saga.name;
-            document.getElementById('btnBack').classList.remove('hidden');
-            document.getElementById('addSagaBtn').classList.add('hidden');
-            saga.books.filter(b => b.title.toLowerCase().includes(search)).forEach(book => mainGrid.appendChild(createBookCard(book, true)));
-        } else {
-            viewTitle.innerText = "Biblioteca Personal";
-            document.getElementById('btnBack').classList.add('hidden');
-            document.getElementById('addSagaBtn').classList.remove('hidden');
-
-            library.sagas.filter(s => s.name.toLowerCase().includes(search)).forEach(saga => {
-                const card = document.createElement('div');
-                card.className = 'saga-card'; card.dataset.id = saga.id;
-                card.innerHTML = `<h3>${saga.name}</h3><span>${saga.books.length} LIBROS</span>
-                                  <div class="card-actions" style="justify-content: center;">
-                                    <button class="action-btn edit-btn" onclick="openEditSaga(event, ${saga.id})">Editar</button>
-                                    <button class="action-btn delete-btn" onclick="deleteSaga(event, ${saga.id})">Borrar</button>
-                                  </div>`;
-                card.onclick = () => { currentSagaId = saga.id; render(); };
-                mainGrid.appendChild(card);
-            });
-
-            library.books.filter(b => b.title.toLowerCase().includes(search)).forEach(book => mainGrid.appendChild(createBookCard(book, false)));
-        }
-        updateStats();
-    }
-
-    function createBookCard(book, isInsideSaga) {
-        const div = document.createElement('div');
-        div.className = 'book-card'; div.dataset.id = book.id;
-        let ratingHtml = book.rating == 6 ? `<div class="status-reading">📖 Leyendo</div>` : (book.rating > 0 ? `<div class="stars">${'★'.repeat(book.rating)}${'☆'.repeat(5-book.rating)}</div>` : '');
-        div.innerHTML = `<img src="${book.cover}" onerror="this.src='https://via.placeholder.com/240x380?text=Sin+Imagen'">
-            <div class="book-content">
-                <p class="book-title">${book.title}</p><p class="book-author">${book.author}</p>
-                ${ratingHtml}${book.opinion ? `<div class="opinion">"${book.opinion}"</div>` : ''}
-                <div class="card-actions">
-                    <button class="action-btn edit-btn" onclick="openEditBook(event, ${book.id}, ${isInsideSaga})">Editar</button>
-                    <button class="action-btn delete-btn" onclick="deleteBook(event, ${book.id}, ${isInsideSaga})">Borrar</button>
-                </div>
-            </div>`;
-        return div;
-    }
-
-    function openEditBook(e, id, isInsideSaga) {
-        e.stopPropagation();
-        const book = isInsideSaga ? library.sagas.find(s => s.id === currentSagaId).books.find(b => b.id === id) : library.books.find(b => b.id === id);
-        document.getElementById('editBookId').value = id;
-        document.getElementById('title').value = book.title; document.getElementById('author').value = book.author;
-        document.getElementById('cover').value = book.cover; document.getElementById('rating').value = book.rating;
-        document.getElementById('opinion').value = book.opinion;
-        document.getElementById('bookModalTitle').innerText = "EDITAR LIBRO";
-        document.getElementById('bookModal').style.display = 'flex';
-    }
-
-    function openEditSaga(e, id) {
-        e.stopPropagation();
-        const saga = library.sagas.find(s => s.id === id);
-        document.getElementById('editSagaId').value = id;
-        document.getElementById('sagaName').value = saga.name;
-        document.getElementById('sagaModalTitle').innerText = "EDITAR SAGA";
-        document.getElementById('sagaModal').style.display = 'flex';
-    }
-
-    document.getElementById('bookForm').onsubmit = (e) => {
-        e.preventDefault();
-        const id = document.getElementById('editBookId').value;
-        const data = { id: id ? parseInt(id) : Date.now(), title: title.value, author: author.value, cover: cover.value, rating: parseInt(rating.value), opinion: opinion.value };
-        if(id) {
-            if(currentSagaId) { let s = library.sagas.find(s => s.id === currentSagaId); s.books[s.books.findIndex(b => b.id == id)] = data; }
-            else library.books[library.books.findIndex(b => b.id == id)] = data;
-        } else {
-            if(currentSagaId) library.sagas.find(s => s.id === currentSagaId).books.push(data);
-            else library.books.push(data);
-        }
-        save(); closeModals(); e.target.reset();
-    };
-
-    document.getElementById('sagaForm').onsubmit = (e) => {
-        e.preventDefault();
-        const id = document.getElementById('editSagaId').value;
-        if(id) library.sagas.find(s => s.id == id).name = sagaName.value;
-        else library.sagas.push({ id: Date.now(), name: sagaName.value, books: [] });
-        save(); closeModals(); e.target.reset();
-    };
-
-    function deleteBook(e, id, isInsideSaga) {
-        e.stopPropagation(); if(!confirm("¿Borrar libro?")) return;
-        if(isInsideSaga) { let s = library.sagas.find(s => s.id === currentSagaId); s.books = s.books.filter(b => b.id !== id); }
-        else library.books = library.books.filter(b => b.id !== id);
-        save();
-    }
-
-    function deleteSaga(e, id) {
-        e.stopPropagation(); if(!confirm("¿Borrar saga completa?")) return;
-        library.sagas = library.sagas.filter(s => s.id !== id);
-        save();
-    }
-
-    function updateStats() {
-        let t = library.books.length; library.sagas.forEach(s => t += s.books.length);
-        document.getElementById('mainStats').innerText = `${t} LIBROS REGISTRADOS`;
-    }
-
-    const closeModals = () => { document.querySelectorAll('.modal').forEach(m => m.style.display = 'none'); };
-    document.getElementById('addBookBtn').onclick = () => { document.getElementById('editBookId').value = ''; document.getElementById('bookModalTitle').innerText = "AÑADIR LIBRO"; document.getElementById('bookModal').style.display = 'flex'; };
-    document.getElementById('addSagaBtn').onclick = () => { document.getElementById('editSagaId').value = ''; document.getElementById('sagaModalTitle').innerText = "NUEVA SAGA"; document.getElementById('sagaModal').style.display = 'flex'; };
-    document.getElementById('btnBack').onclick = () => { currentSagaId = null; render(); };
-    document.getElementById('searchInput').oninput = (e) => render(e.target.value);
-
-    render();
-</script>
-</body>
 </html>
