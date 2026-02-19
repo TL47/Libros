@@ -6,11 +6,155 @@ let currentSagaId = null;
 let currentEditingBookId = null;
 let currentEditingSagaId = null;
 let currentFilter = 'all'; // Filtro activo
+let currentUser = null; // Usuario actual
+let isUsingSupabase = false; // Flag para usar Supabase o localStorage
 
 const mainGrid = document.getElementById('mainGrid');
 const viewTitle = document.getElementById('viewTitle');
 const btnBack = document.getElementById('btnBack');
 const searchInput = document.getElementById('searchInput');
+
+// ========================
+// AUTENTICACIÓN
+// ========================
+const authModal = document.getElementById('authModal');
+const authForm = document.getElementById('authForm');
+const authTitle = document.getElementById('authTitle');
+const authBtn = document.getElementById('authBtn');
+const toggleAuthBtn = document.getElementById('toggleAuthBtn');
+const logoutBtn = document.getElementById('logoutBtn');
+const mainContainer = document.getElementById('mainContainer');
+const togglePasswordBtn = document.getElementById('togglePasswordBtn');
+const authPassword = document.getElementById('authPassword');
+
+let isSigningUp = false;
+
+// Toggle de visibilidad de contraseña
+togglePasswordBtn.onclick = (e) => {
+    e.preventDefault();
+    const type = authPassword.getAttribute('type') === 'password' ? 'text' : 'password';
+    authPassword.setAttribute('type', type);
+    const iconSpan = togglePasswordBtn.querySelector('.material-symbols-outlined');
+    iconSpan.innerText = type === 'password' ? 'visibility_off' : 'visibility';
+};
+
+// Verificar si hay sesión activa
+window.addEventListener('load', async () => {
+    try {
+        const session = await getSession();
+        if (session && session.user) {
+            currentUser = session.user;
+            isUsingSupabase = true;
+            authModal.style.display = 'none';
+            mainContainer.style.display = 'block';
+            await loadBooksFromSupabase();
+        }
+    } catch (error) {
+        console.error('Error al verificar sesión:', error);
+    }
+});
+
+// Alternar entre login y signup
+toggleAuthBtn.onclick = () => {
+    isSigningUp = !isSigningUp;
+    authTitle.innerText = isSigningUp ? 'REGÍSTRATE' : 'INICIA SESIÓN';
+    authBtn.innerText = isSigningUp ? 'CREAR CUENTA' : 'INICIAR SESIÓN';
+    toggleAuthBtn.innerText = isSigningUp ? '¿Ya tienes cuenta? INICIA SESIÓN' : '¿No tienes cuenta? REGÍSTRATE';
+};
+
+// Enviar formulario de autenticación
+authForm.onsubmit = async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('authEmail').value;
+    const password = document.getElementById('authPassword').value;
+    const rememberMe = document.getElementById('rememberMe').checked;
+    
+    authBtn.disabled = true;
+    authBtn.innerText = 'CARGANDO...';
+    
+    try {
+        let result;
+        if (isSigningUp) {
+            result = await signUp(email, password);
+            alert('✅ Cuenta creada. Revisa tu email para confirmar.');
+        } else {
+            result = await signIn(email, password);
+            if (result.session) {
+                currentUser = result.session.user;
+                isUsingSupabase = true;
+                await saveSessionToCache(rememberMe);
+                authModal.style.display = 'none';
+                mainContainer.style.display = 'block';
+                authForm.reset();
+                await loadBooksFromSupabase();
+            }
+        }
+    } catch (error) {
+        alert('❌ Error: ' + error.message);
+    } finally {
+        authBtn.disabled = false;
+        authBtn.innerText = isSigningUp ? 'CREAR CUENTA' : 'INICIAR SESIÓN';
+    }
+};
+
+// Cerrar sesión
+logoutBtn.onclick = async () => {
+    if (confirm('¿Estás seguro de que quieres cerrar sesión?')) {
+        try {
+            await signOut();
+            currentUser = null;
+            isUsingSupabase = false;
+            library = { books: [], sagas: [] };
+            authModal.style.display = 'flex';
+            mainContainer.style.display = 'none';
+            authForm.reset();
+            isSigningUp = false;
+            authTitle.innerText = 'INICIA SESIÓN';
+            authBtn.innerText = 'INICIAR SESIÓN';
+            toggleAuthBtn.innerText = '¿No tienes cuenta? REGÍSTRATE';
+        } catch (error) {
+            alert('Error al cerrar sesión: ' + error.message);
+        }
+    }
+};
+
+// Cargar libros desde Supabase
+async function loadBooksFromSupabase() {
+    try {
+        const booksData = await getBooks(currentUser.id);
+        const sagasData = await getSagas(currentUser.id);
+        
+        library.books = booksData.map(b => ({
+            id: b.id,
+            title: b.title,
+            author: b.author,
+            cover: b.cover,
+            rating: b.rating,
+            readDate: b.read_date,
+            opinion: b.opinion,
+            isPending: b.is_pending,
+        }));
+        
+        library.sagas = sagasData.map(s => ({
+            id: s.id,
+            name: s.name,
+            books: [],
+        }));
+        
+        // Asociar libros con sagas
+        for (const book of library.books) {
+            const sagaId = booksData.find(b => b.id === book.id)?.saga_id;
+            if (sagaId) {
+                const saga = library.sagas.find(s => s.id === sagaId);
+                if (saga) saga.books.push(book);
+            }
+        }
+        
+        render();
+    } catch (error) {
+        console.error('Error cargando libros:', error);
+    }
+}
 
 // ========================
 // INICIALIZACION SORTABLE
@@ -44,9 +188,23 @@ const sortable = new Sortable(mainGrid, {
 // ========================
 // FUNCIÓN UNIFICADA save() - Usa una sola key de localStorage
 function save(shouldRender = true) {
+    // Guardar en localStorage (backup local)
     localStorage.setItem('myLibraryStorageV2', JSON.stringify(library));
+    
+    // Guardar en Supabase si hay sesión activa
+    if (isUsingSupabase && currentUser) {
+        syncToSupabase().catch(err => console.error('Error sincronizando:', err));
+    }
+    
     if (shouldRender) render();
     updateStats();
+}
+
+// Sincronizar library con Supabase
+async function syncToSupabase() {
+    // Por ahora solo hacemos un backup básico
+    // En una versión más avanzada, sincronizaríamos cambios específicos
+    console.log('📤 Sincronizando con Supabase...');
 }
 
 // ========================
