@@ -1,11 +1,3 @@
-/* Aura visual para selección múltiple de libros */
-.book-selected-aura {
-    box-shadow: 0 0 0 4px var(--st-pats-gold), 0 0 16px 4px #c5a05999;
-    border: 2px solid var(--st-pats-gold) !important;
-    position: relative;
-    z-index: 2;
-    transition: box-shadow 0.2s, border 0.2s;
-}
 /* Fondo animado de portada de saga */
 .saga-bg-animated {
     position: absolute;

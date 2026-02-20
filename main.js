@@ -1,6 +1,3 @@
-// Estado para selección múltiple
-let isMultiSelectMode = false;
-let selectedBookIds = [];
 // ========================
 // IMPORTS SUPABASE
 // ========================
@@ -18,6 +15,13 @@ let currentEditingSagaId = null;
 let currentFilter = 'all'; // Filtro activo
 let currentUser = null; // Usuario actual
 let isUsingSupabase = false; // Flag para usar Supabase o localStorage
+let idCounter = Date.now(); // Contador para generar IDs únicos sin decimales
+
+// Función para generar IDs únicos
+function generateUniqueId() {
+    idCounter++;
+    return idCounter;
+}
 
 const mainGrid = document.getElementById('mainGrid');
 const viewTitle = document.getElementById('viewTitle');
@@ -294,14 +298,6 @@ async function syncToSupabase() {
                     await addBook({ ...book, sagaId, order: i }, currentUser.id);
                 }
         }
-
-        // 5. Subir los libros de cada saga con su sagaId
-        for (const saga of library.sagas) {
-            const sagaId = sagaNameToId[saga.name];
-            for (const book of saga.books) {
-                await addBook({ ...book, sagaId }, currentUser.id);
-            }
-        }
     } catch (err) {
         console.error('Error sincronizando con Supabase:', err);
     }
@@ -323,15 +319,102 @@ function importFromClipboard() {
         try {
             const parsed = JSON.parse(data);
             if (parsed.books && parsed.sagas) {
-                if (confirm("¿Quieres sobrescribir tu biblioteca actual con los datos pegados?")) {
-                    library = parsed;
+                if (confirm("¿Quieres importar estos libros a tu biblioteca? Si hay libros con el mismo título y autor, se reemplazarán.")) {
+                    const idMap = {}; // Mapear IDs antiguos a nuevos sagas
+                    
+                    // Procesar sagas: crear nuevas o actualizar existentes
+                    for (const saga of parsed.sagas) {
+                        // Buscar si la saga ya existe por nombre
+                        let existingSaga = library.sagas.find(s => s.name === saga.name);
+                        
+                        if (existingSaga) {
+                            // Saga existe: reemplazar sus libros
+                            idMap[saga.id] = existingSaga.id;
+                            existingSaga.books = [];
+                        } else {
+                            // Saga nueva: crear con nuevo ID
+                            const newSagaId = generateUniqueId();
+                            idMap[saga.id] = newSagaId;
+                            library.sagas.push({
+                                id: newSagaId,
+                                name: saga.name,
+                                books: [],
+                                order: saga.order || 0
+                            });
+                        }
+                    }
+                    
+                    // Procesar libros sueltos
+                    for (const book of parsed.books) {
+                        // Buscar si el libro ya existe (por título + autor)
+                        const existingBookIndex = library.books.findIndex(b => 
+                            b.title.toLowerCase() === book.title.toLowerCase() && 
+                            b.author.toLowerCase() === book.author.toLowerCase()
+                        );
+                        
+                        const bookData = {
+                            id: existingBookIndex !== -1 ? library.books[existingBookIndex].id : generateUniqueId(),
+                            title: book.title,
+                            author: book.author,
+                            cover: book.cover,
+                            rating: book.rating,
+                            readDate: book.readDate || null,
+                            opinion: book.opinion || null,
+                            isPending: book.isPending || false,
+                            order: book.order || 0
+                        };
+                        
+                        if (existingBookIndex !== -1) {
+                            // Reemplazar existente
+                            library.books[existingBookIndex] = bookData;
+                        } else {
+                            // Añadir nuevo
+                            library.books.push(bookData);
+                        }
+                    }
+                    
+                    // Procesar libros de sagas
+                    for (const saga of parsed.sagas) {
+                        const sagaId = idMap[saga.id];
+                        const sagaInLibrary = library.sagas.find(s => s.id === sagaId);
+                        
+                        for (const book of saga.books) {
+                            // Buscar si el libro ya existe en la saga
+                            const existingBookIndex = sagaInLibrary.books.findIndex(b => 
+                                b.title.toLowerCase() === book.title.toLowerCase() && 
+                                b.author.toLowerCase() === book.author.toLowerCase()
+                            );
+                            
+                            const bookData = {
+                                id: existingBookIndex !== -1 ? sagaInLibrary.books[existingBookIndex].id : generateUniqueId(),
+                                title: book.title,
+                                author: book.author,
+                                cover: book.cover,
+                                rating: book.rating,
+                                readDate: book.readDate || null,
+                                opinion: book.opinion || null,
+                                isPending: book.isPending || false,
+                                order: book.order || 0
+                            };
+                            
+                            if (existingBookIndex !== -1) {
+                                // Reemplazar existente
+                                sagaInLibrary.books[existingBookIndex] = bookData;
+                            } else {
+                                // Añadir nuevo
+                                sagaInLibrary.books.push(bookData);
+                            }
+                        }
+                    }
+                    
                     save();
+                    alert("✅ Biblioteca importada correctamente. Los libros nuevos se han añadido y los duplicados se han actualizado.");
                 }
             } else {
                 alert("El código no parece ser válido.");
             }
         } catch (e) {
-            alert("Error al procesar los datos.");
+            alert("Error al procesar los datos: " + e.message);
         }
     }
 }
@@ -360,11 +443,6 @@ function render(searchText = '') {
             .filter(b => b.title.toLowerCase().includes(search) && shouldShowBook(b))
             .forEach(book => {
                 const bookCard = createBookCard(book, true);
-                if (isMultiSelectMode && selectedBookIds.includes(book.id)) {
-                    bookCard.classList.add('book-selected-aura');
-                } else {
-                    bookCard.classList.remove('book-selected-aura');
-                }
                 mainGrid.appendChild(bookCard);
             });
     } else {
@@ -424,7 +502,7 @@ function render(searchText = '') {
                         bgDiv.style.backgroundImage = '';
                     }, 250);
                 });
-                card.onclick = () => { if (!isMultiSelectMode) { currentSagaId = saga.id; render(); } };
+                card.onclick = () => { currentSagaId = saga.id; render(); };
                 mainGrid.appendChild(card);
             });
 
@@ -432,11 +510,6 @@ function render(searchText = '') {
             .filter(b => b.title.toLowerCase().includes(search) && shouldShowBook(b))
             .forEach(book => {
                 const bookCard = createBookCard(book, false);
-                if (isMultiSelectMode && selectedBookIds.includes(book.id)) {
-                    bookCard.classList.add('book-selected-aura');
-                } else {
-                    bookCard.classList.remove('book-selected-aura');
-                }
                 mainGrid.appendChild(bookCard);
             });
     }
@@ -488,61 +561,8 @@ function createBookCard(book, isInsideSaga) {
             </div>
         </div>
     `;
-    // Aura visual si está seleccionado
-    if (isMultiSelectMode && selectedBookIds.includes(book.id)) {
-        div.classList.add('book-selected-aura');
-    } else {
-        div.classList.remove('book-selected-aura');
-    }
-// ========================
-// SELECCIÓN MÚLTIPLE DE LIBROS
-// ========================
-const multiSelectBtn = document.getElementById('multiSelectBtn');
-const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
 
-multiSelectBtn.onclick = () => {
-    isMultiSelectMode = !isMultiSelectMode;
-    selectedBookIds = [];
-    deleteSelectedBtn.style.display = isMultiSelectMode ? 'inline-block' : 'none';
-    multiSelectBtn.innerText = isMultiSelectMode ? 'Cancelar Selección' : 'Seleccionar Libros';
-    render(searchInput.value);
-};
 
-deleteSelectedBtn.onclick = () => {
-    if (selectedBookIds.length === 0) return alert('Selecciona al menos un libro.');
-    if (!confirm('¿Borrar los libros seleccionados?')) return;
-    // Borrar de libros sueltos
-    library.books = library.books.filter(b => !selectedBookIds.includes(b.id));
-    // Borrar de sagas
-    for (const saga of library.sagas) {
-        saga.books = saga.books.filter(b => !selectedBookIds.includes(b.id));
-    }
-    selectedBookIds = [];
-    save();
-    render(searchInput.value);
-};
-
-// Delegación de eventos para selección de libros por click
-mainGrid.addEventListener('click', (e) => {
-    // Buscar la tarjeta de libro más cercana
-    const bookCard = e.target.closest('.book-card');
-    if (!bookCard) return;
-    // Si está en modo selección múltiple y no se hace click en un botón de acción
-    if (isMultiSelectMode && !e.target.closest('.card-actions')) {
-        const bookId = parseInt(bookCard.dataset.id);
-        if (selectedBookIds.includes(bookId)) {
-            selectedBookIds = selectedBookIds.filter(id => id !== bookId);
-        } else {
-            selectedBookIds.push(bookId);
-        }
-        // Evitar que Sortable arrastre en modo selección múltiple
-        e.preventDefault();
-        e.stopPropagation();
-        render(searchInput.value);
-        return;
-    }
-    // Si no está en modo selección múltiple, dejar el comportamiento normal (drag, abrir saga, etc)
-});
 
     // PREVENCIÓN DE XSS: Insertar la opinión de forma segura usando textContent
     if (book.opinion) {
@@ -617,7 +637,7 @@ document.getElementById('bookForm').onsubmit = (e) => {
     }
     
     const bookData = {
-        id: id ? parseInt(id) : Date.now(),
+        id: id ? parseInt(id) : generateUniqueId(),
         title: title,
         author: author,
         cover: document.getElementById('cover').value,
@@ -686,7 +706,7 @@ document.getElementById('sagaForm').onsubmit = (e) => {
                     }));
         library.sagas.find(s => s.id == id).name = name;
     } else {
-        library.sagas.push({ id: Date.now(), name: name, books: [] });
+        library.sagas.push({ id: generateUniqueId(), name: name, books: [] });
     }
     save();
     closeModals();
