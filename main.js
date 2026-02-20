@@ -847,6 +847,257 @@ filterButtons.forEach(btn => {
 });
 
 // ========================
+// BÚSQUEDA DE PORTADAS
+// ========================
+const searchCoverBtn = document.getElementById('searchCoverBtn');
+const coverSearchModal = document.getElementById('coverSearchModal');
+const coverSearchButton = document.getElementById('coverSearchButton');
+const coverSearchInput = document.getElementById('coverSearchInput');
+
+let coverSearchPage = 1; // Página actual de resultados
+
+searchCoverBtn.onclick = (e) => {
+    e.preventDefault();
+    const title = document.getElementById('title').value;
+    const author = document.getElementById('author').value;
+    
+    // Usar el título para buscar
+    if (title) {
+        coverSearchInput.value = title;
+    } else if (author) {
+        coverSearchInput.value = author;
+    }
+    
+    coverSearchPage = 1; // Resetear a primera página
+    coverSearchModal.style.display = 'flex';
+};
+
+function closeCoverSearchModal() {
+    coverSearchModal.style.display = 'none';
+    document.getElementById('coverSearchResults').innerHTML = '';
+    coverSearchPage = 1;
+}
+
+coverSearchButton.onclick = async () => {
+    const searchQuery = coverSearchInput.value.trim();
+    if (!searchQuery) {
+        alert('Por favor ingresa un título o autor para buscar.');
+        return;
+    }
+    
+    coverSearchPage = 1;
+    await searchBookImages(searchQuery, coverSearchPage);
+};
+
+// Enter en el input
+coverSearchInput.onkeypress = (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        coverSearchButton.click();
+    }
+};
+
+async function searchBookImages(query, page = 1) {
+    const loadingDiv = document.getElementById('coverSearchLoading');
+    const resultsDiv = document.getElementById('coverSearchResults');
+    
+    loadingDiv.style.display = 'block';
+    resultsDiv.innerHTML = '';
+    
+    try {
+        console.log('🔍 Buscando en Unsplash:', query, 'Página:', page);
+        
+        // Unsplash API - Búsqueda de imágenes de alta calidad
+        // Esta API funciona sin credenciales incluidas en el URL para búsquedas públicas
+        const perPage = 10;
+        const searchUrl = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query + ' book cover')}&page=${page}&per_page=${perPage}&client_id=OTja5Jrkk6MbgeRUBuiFf8RNqqW2-K0PQJa_5vpF_V4`;
+        
+        const response = await fetch(searchUrl, {
+            headers: {
+                'Accept-Version': 'v1'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Unsplash API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('📸 Resultados Unsplash:', data);
+        
+        if (!data.results || data.results.length === 0) {
+            resultsDiv.innerHTML = `
+                <p style="grid-column: 1/-1; text-align: center; color: var(--cloud-grey); margin: 20px 0;">
+                    No se encontraron imágenes para: "${query}"
+                    <br><br>
+                    Intenta:
+                    <br>• Escribir solo el título del libro
+                    <br>• Buscar en inglés
+                    <br>• O pegar una URL de portada manualmente
+                </p>
+            `;
+            loadingDiv.style.display = 'none';
+            return;
+        }
+        
+        // Convertir resultados de Unsplash a nuestro formato
+        const imageUrls = data.results.map(photo => ({
+            url: photo.urls.small,
+            large: photo.urls.regular,
+            title: photo.alt_description || photo.description || 'Book cover',
+            author: photo.user.name
+        }));
+        
+        console.log('✅ Imágenes encontradas:', imageUrls.length);
+        displaySearchImageResults(imageUrls, query, page, data.total > (page * perPage));
+        
+    } catch (error) {
+        console.error('❌ Error en Unsplash:', error);
+        resultsDiv.innerHTML = `
+            <p style="grid-column: 1/-1; text-align: center; color: red;">
+                Error: ${error.message}
+                <br><br>
+                <small>Intenta:</small>
+                <br>• Pegar una URL de portada manualmente
+                <br>• Esperar unos segundos y reintentar
+                <br>• Verificar tu conexión
+            </p>
+        `;
+    }
+    
+    loadingDiv.style.display = 'none';
+}
+
+function displaySearchImageResults(imageUrls, query, page) {
+    const resultsDiv = document.getElementById('coverSearchResults');
+    resultsDiv.innerHTML = '';
+    
+    const resultsPerPage = 10;
+    const startIdx = (page - 1) * resultsPerPage;
+    const endIdx = startIdx + resultsPerPage;
+    const paginatedUrls = imageUrls.slice(startIdx, endIdx);
+    
+    console.log(`📸 Mostrando portadas ${startIdx + 1} a ${Math.min(endIdx, imageUrls.length)} de ${imageUrls.length}`);
+    
+    if (paginatedUrls.length === 0) {
+        resultsDiv.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: var(--cloud-grey);">No hay más resultados.</p>';
+        return;
+    }
+    
+    // Mostrar imágenes
+    paginatedUrls.forEach((item) => {
+        // item puede ser un objeto {url, large, title, author} o solo una URL string
+        const imgUrl = item.url || item;
+        const fullUrl = item.large || imgUrl;
+        
+        const wrapper = document.createElement('div');
+        wrapper.style.cursor = 'pointer';
+        wrapper.style.position = 'relative';
+        wrapper.style.overflow = 'hidden';
+        wrapper.style.borderRadius = '8px';
+        wrapper.style.transition = 'transform 0.2s';
+        wrapper.style.backgroundColor = '#1a1a1a';
+        wrapper.style.minHeight = '200px';
+        
+        const img = document.createElement('img');
+        img.src = imgUrl;
+        img.style.cursor = 'pointer';
+        img.style.borderRadius = '8px';
+        img.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+        img.style.width = '100%';
+        img.style.aspectRatio = '3/4';
+        img.style.objectFit = 'cover';
+        img.style.backgroundColor = '#222';
+        
+        if (item.title) {
+            img.title = `${item.title}${item.author ? ' - ' + item.author : ''}`;
+        }
+        
+        wrapper.onmouseover = () => {
+            wrapper.style.transform = 'scale(1.05)';
+        };
+        
+        wrapper.onmouseout = () => {
+            wrapper.style.transform = 'scale(1)';
+        };
+        
+        img.onclick = () => {
+            document.getElementById('cover').value = fullUrl;
+            closeCoverSearchModal();
+        };
+        
+        img.onerror = () => {
+            console.warn('⚠️ No se pudo cargar:', imgUrl);
+            wrapper.style.display = 'none';
+        };
+        
+        wrapper.appendChild(img);
+        resultsDiv.appendChild(wrapper);
+    });
+    
+    // Agregar controles de paginación
+    const totalPages = Math.ceil(imageUrls.length / resultsPerPage);
+    if (totalPages > 1) {
+        const paginationDiv = document.createElement('div');
+        paginationDiv.style.gridColumn = '1/-1';
+        paginationDiv.style.display = 'flex';
+        paginationDiv.style.justifyContent = 'center';
+        paginationDiv.style.gap = '10px';
+        paginationDiv.style.marginTop = '20px';
+        paginationDiv.style.paddingTop = '20px';
+        paginationDiv.style.borderTop = '1px solid var(--tommen-green)';
+        
+        if (page > 1) {
+            const prevBtn = document.createElement('button');
+            prevBtn.textContent = '← Anterior';
+            prevBtn.className = 'btn btn-main';
+            prevBtn.style.marginTop = '0';
+            prevBtn.style.padding = '10px 15px';
+            prevBtn.style.fontSize = '0.9rem';
+            prevBtn.onclick = async () => {
+                coverSearchPage = page - 1;
+                const searchQuery = coverSearchInput.value;
+                await searchBookImages(searchQuery, page - 1);
+                document.getElementById('coverSearchResults').scrollIntoView({ behavior: 'smooth' });
+            };
+            paginationDiv.appendChild(prevBtn);
+        }
+        
+        const pageInfo = document.createElement('span');
+        pageInfo.textContent = `${page} de ${totalPages}`;
+        pageInfo.style.color = 'var(--cloud-grey)';
+        pageInfo.style.alignSelf = 'center';
+        pageInfo.style.fontWeight = 'bold';
+        paginationDiv.appendChild(pageInfo);
+        
+        if (page < totalPages) {
+            const nextBtn = document.createElement('button');
+            nextBtn.textContent = 'Siguiente →';
+            nextBtn.className = 'btn btn-main';
+            nextBtn.style.marginTop = '0';
+            nextBtn.style.padding = '10px 15px';
+            nextBtn.style.fontSize = '0.9rem';
+            nextBtn.onclick = async () => {
+                coverSearchPage = page + 1;
+                const searchQuery = coverSearchInput.value;
+                await searchBookImages(searchQuery, page + 1);
+                document.getElementById('coverSearchResults').scrollIntoView({ behavior: 'smooth' });
+            };
+            paginationDiv.appendChild(nextBtn);
+        }
+        
+        resultsDiv.appendChild(paginationDiv);
+    }
+}
+
+// Cerrar modal al hacer clic en el overlay
+coverSearchModal.addEventListener('click', (e) => {
+    if (e.target.id === 'coverSearchModal') {
+        closeCoverSearchModal();
+    }
+});
+
+// ========================
 // INICIALIZACIÓN
 // ========================
 render();

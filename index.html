@@ -78,7 +78,12 @@
                 <input type="hidden" id="editBookId">
                 <input type="text" id="title" placeholder="Título" required>
                 <input type="text" id="author" placeholder="Autor/a" required>
-                <input type="url" id="cover" placeholder="URL de la Imagen" required>
+                <div style="display: flex; gap: 10px; align-items: flex-end;">
+                    <div style="flex: 1;">
+                        <input type="url" id="cover" placeholder="URL de la Imagen" required>
+                    </div>
+                    <button type="button" id="searchCoverBtn" class="btn btn-main" style="white-space: nowrap;">🔍 Buscar Portada</button>
+                </div>
                 <select id="rating" required>
                     <option value="0">Valoración</option>
                     <option value="6">Leyendo</option>
@@ -93,6 +98,23 @@
                 <button type="submit" id="saveBookBtn" class="btn btn-main" style="width: 100%">GUARDAR</button>
                 <button type="button" class="btn btn-cancel" onclick="closeModals()">CANCELAR</button>
             </form>
+        </div>
+    </div>
+
+    <div id="coverSearchModal" class="modal">
+        <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+            <h2 style="font-family: 'Oswald'; color: var(--st-pats-gold); margin-bottom: 1rem;">BUSCAR PORTADA</h2>
+            <div style="display: flex; gap: 10px; margin-bottom: 1rem;">
+                <input type="text" id="coverSearchInput" placeholder="Buscar por título o autor..." style="flex: 1;">
+                <button id="coverSearchButton" class="btn btn-main">Buscar</button>
+            </div>
+            <div id="coverSearchResults" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 1rem;">
+                <!-- Los resultados se mostrarán aquí -->
+            </div>
+            <div id="coverSearchLoading" style="text-align: center; display: none; margin: 20px 0;">
+                <p>Buscando portadas...</p>
+            </div>
+            <button type="button" class="btn btn-cancel" onclick="closeCoverSearchModal()" style="width: 100%;">CERRAR</button>
         </div>
     </div>
 
