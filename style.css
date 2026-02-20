@@ -1,3 +1,39 @@
+/* Aura visual para selección múltiple de libros */
+.book-selected-aura {
+    box-shadow: 0 0 0 4px var(--st-pats-gold), 0 0 16px 4px #c5a05999;
+    border: 2px solid var(--st-pats-gold) !important;
+    position: relative;
+    z-index: 2;
+    transition: box-shadow 0.2s, border 0.2s;
+}
+/* Fondo animado de portada de saga */
+.saga-bg-animated {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    background-size: cover;
+    background-position: center;
+    border-radius: 12px;
+    opacity: 1;
+    transition: opacity 0.4s;
+    filter: brightness(0.7) blur(1px);
+}
+
+.saga-card {
+    position: relative;
+    overflow: hidden;
+    z-index: 1;
+}
+
+.saga-card > h3,
+.saga-card > span,
+.saga-card > .card-actions {
+    position: relative;
+    z-index: 2;
+}
 :root {
     --tommen-blue: #1a2a44;
     --tommen-green: #2d4c3e;
@@ -475,29 +511,6 @@ form select {
     filter: brightness(1.15);
 }
 
-.saga-books-preview {
-    display: none;
-    position: absolute;
-    bottom: 10px;
-    left: 10px;
-    right: 10px;
-    height: 60px;
-    gap: 5px;
-    pointer-events: none;
-}
-
-.saga-card:hover .saga-books-preview {
-    display: flex;
-}
-
-.saga-book-thumb {
-    width: 50px;
-    height: 60px;
-    border-radius: 3px;
-    object-fit: cover;
-    border: 1px solid var(--st-pats-gold);
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
-}
 
 /* ========================
    BARRA DE PROGRESO

@@ -1,3 +1,21 @@
+// Borrar todos los libros de un usuario
+async function deleteAllBooks(userId) {
+    const { error } = await supabase
+        .from('books')
+        .delete()
+        .eq('user_id', userId);
+    if (error) throw error;
+}
+
+// Borrar todas las sagas de un usuario
+async function deleteAllSagas(userId) {
+    const { error } = await supabase
+        .from('sagas')
+        .delete()
+        .eq('user_id', userId);
+    if (error) throw error;
+}
+
 // ========================
 // CONFIGURACIÓN SUPABASE (SDK Oficial)
 // ========================
@@ -96,9 +114,9 @@ async function addBook(bookData, userId) {
             opinion: bookData.opinion || null,
             is_pending: bookData.isPending || false,
             saga_id: bookData.sagaId || null,
+            order: bookData.order || 0,
         }])
         .select();
-    
     if (error) throw error;
     return data;
 }
@@ -115,11 +133,11 @@ async function updateBook(bookId, bookData) {
             opinion: bookData.opinion || null,
             is_pending: bookData.isPending || false,
             saga_id: bookData.sagaId || null,
+            order: bookData.order || 0,
             updated_at: new Date(),
         })
         .eq('id', bookId)
         .select();
-    
     if (error) throw error;
     return data;
 }
@@ -142,7 +160,7 @@ async function getSagas(userId) {
         .from('sagas')
         .select('*')
         .eq('user_id', userId)
-        .order('created_at', { ascending: false });
+        .order('order', { ascending: true });
     
     if (error) throw error;
     return data || [];
@@ -154,9 +172,9 @@ async function addSaga(sagaData, userId) {
         .insert([{
             user_id: userId,
             name: sagaData.name,
+            order: sagaData.order || 0,
         }])
         .select();
-    
     if (error) throw error;
     return data;
 }
@@ -166,11 +184,11 @@ async function updateSaga(sagaId, sagaData) {
         .from('sagas')
         .update({
             name: sagaData.name,
+            order: sagaData.order || 0,
             updated_at: new Date(),
         })
         .eq('id', sagaId)
         .select();
-    
     if (error) throw error;
     return data;
 }

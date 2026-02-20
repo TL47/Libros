@@ -1,6 +1,16 @@
+// Estado para selección múltiple
+let isMultiSelectMode = false;
+let selectedBookIds = [];
 // ========================
-// VARIABLES GLOBALES
+// IMPORTS SUPABASE
 // ========================
+// Asegúrate de que estas funciones estén exportadas en supabaseConfig.js
+// y que el archivo esté correctamente enlazado en tu HTML
+// Si usas módulos ES6, usa import {...} from './supabaseConfig.js';
+// Si usas script clásico, asegúrate que supabaseConfig.js se carga antes
+
+// deleteAllBooks, deleteAllSagas, addBook, addSaga, getSagas deben estar en window o importados
+
 let library = JSON.parse(localStorage.getItem('myLibraryStorageV2')) || { books: [], sagas: [] };
 let currentSagaId = null;
 let currentEditingBookId = null;
@@ -124,32 +134,50 @@ async function loadBooksFromSupabase() {
         const booksData = await getBooks(currentUser.id);
         const sagasData = await getSagas(currentUser.id);
         
-        library.books = booksData.map(b => ({
-            id: b.id,
-            title: b.title,
-            author: b.author,
-            cover: b.cover,
-            rating: b.rating,
-            readDate: b.read_date,
-            opinion: b.opinion,
-            isPending: b.is_pending,
-        }));
-        
-        library.sagas = sagasData.map(s => ({
-            id: s.id,
-            name: s.name,
-            books: [],
-        }));
-        
-        // Asociar libros con sagas
-        for (const book of library.books) {
-            const sagaId = booksData.find(b => b.id === book.id)?.saga_id;
-            if (sagaId) {
-                const saga = library.sagas.find(s => s.id === sagaId);
-                if (saga) saga.books.push(book);
+        // 1. Ordenar y crear sagas
+        library.sagas = sagasData
+            .slice()
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+            .map(s => ({
+                id: s.id,
+                name: s.name,
+                books: [],
+            }));
+
+        // 2. Limpiar libros sueltos
+        library.books = [];
+
+        // 3. Clasificar libros: si tiene saga_id va a la saga, si no a library.books
+        //    Siempre ordenados por 'order' y sin duplicados
+        const sagaBooksMap = {};
+        for (const saga of library.sagas) {
+            sagaBooksMap[saga.id] = [];
+        }
+        const looseBooksArr = [];
+        for (const b of booksData) {
+            const book = {
+                id: b.id,
+                title: b.title,
+                author: b.author,
+                cover: b.cover,
+                rating: b.rating,
+                readDate: b.read_date,
+                opinion: b.opinion,
+                isPending: b.is_pending,
+                order: b.order ?? 0
+            };
+            if (b.saga_id && sagaBooksMap[b.saga_id]) {
+                sagaBooksMap[b.saga_id].push(book);
+            } else if (!b.saga_id) {
+                looseBooksArr.push(book);
             }
         }
-        
+        // 4. Asignar libros ordenados a cada saga
+        for (const saga of library.sagas) {
+            saga.books = (sagaBooksMap[saga.id] || []).slice().sort((a, b) => a.order - b.order);
+        }
+        // 5. Asignar libros sueltos ordenados
+        library.books = looseBooksArr.slice().sort((a, b) => a.order - b.order);
         render();
     } catch (error) {
         console.error('Error cargando libros:', error);
@@ -163,7 +191,7 @@ async function loadBooksFromSupabase() {
 const sortable = new Sortable(mainGrid, {
     animation: 150,
     ghostClass: 'sortable-ghost',
-    onEnd: function () {
+    onEnd: async function () {
         // Reordenar el array según el nuevo orden visual
         const items = Array.from(mainGrid.children);
         const newOrderIds = items.map(item => parseInt(item.dataset.id));
@@ -171,6 +199,16 @@ const sortable = new Sortable(mainGrid, {
         if (currentSagaId) {
             const saga = library.sagas.find(s => s.id === currentSagaId);
             saga.books.sort((a, b) => newOrderIds.indexOf(a.id) - newOrderIds.indexOf(b.id));
+            // Actualizar orden en Supabase para libros de la saga
+            if (isUsingSupabase && currentUser) {
+                for (let i = 0; i < saga.books.length; i++) {
+                    const book = saga.books[i];
+                    book.order = i;
+                    try {
+                        await updateBook(book.id, { ...book, sagaId: saga.id, order: i });
+                    } catch (e) { console.error('Error actualizando orden libro saga:', e); }
+                }
+            }
         } else {
             // Separar sagas y libros para reordenar ambos
             const sagaIds = items.filter(i => i.classList.contains('saga-card')).map(i => parseInt(i.dataset.id));
@@ -178,6 +216,24 @@ const sortable = new Sortable(mainGrid, {
 
             library.sagas.sort((a, b) => sagaIds.indexOf(a.id) - sagaIds.indexOf(b.id));
             library.books.sort((a, b) => bookIds.indexOf(a.id) - bookIds.indexOf(b.id));
+
+            // Actualizar orden en Supabase para sagas y libros sueltos
+            if (isUsingSupabase && currentUser) {
+                for (let i = 0; i < library.sagas.length; i++) {
+                    const saga = library.sagas[i];
+                    saga.order = i;
+                    try {
+                        await updateSaga(saga.id, { ...saga, order: i });
+                    } catch (e) { console.error('Error actualizando orden saga:', e); }
+                }
+                for (let i = 0; i < library.books.length; i++) {
+                    const book = library.books[i];
+                    book.order = i;
+                    try {
+                        await updateBook(book.id, { ...book, sagaId: null, order: i });
+                    } catch (e) { console.error('Error actualizando orden libro suelto:', e); }
+                }
+            }
         }
         save(false); // Guardar sin volver a renderizar para no romper el drag
     }
@@ -202,9 +258,53 @@ function save(shouldRender = true) {
 
 // Sincronizar library con Supabase
 async function syncToSupabase() {
-    // Por ahora solo hacemos un backup básico
-    // En una versión más avanzada, sincronizaríamos cambios específicos
+    if (!currentUser) return;
     console.log('📤 Sincronizando con Supabase...');
+    try {
+        // 1. Borrar todos los libros y sagas del usuario
+        await Promise.all([
+            deleteAllBooks(currentUser.id),
+            deleteAllSagas(currentUser.id)
+        ]);
+
+            // 2. Subir todas las sagas primero (sin libros), guardando el orden
+            for (let i = 0; i < library.sagas.length; i++) {
+                const saga = library.sagas[i];
+                await addSaga({ name: saga.name, order: i }, currentUser.id);
+        }
+
+        // 3. Obtener las sagas insertadas para mapear IDs
+        const sagasInDb = await getSagas(currentUser.id);
+        const sagaNameToId = {};
+        for (const saga of sagasInDb) {
+            sagaNameToId[saga.name] = saga.id;
+        }
+
+            // 4. Subir solo los libros sueltos (que no están en ninguna saga), guardando el orden
+            for (let i = 0; i < library.books.length; i++) {
+                const book = library.books[i];
+                await addBook({ ...book, sagaId: null, order: i }, currentUser.id);
+            }
+
+            // 5. Subir los libros de cada saga con su sagaId y orden
+            for (const saga of library.sagas) {
+                const sagaId = sagaNameToId[saga.name];
+                for (let i = 0; i < saga.books.length; i++) {
+                    const book = saga.books[i];
+                    await addBook({ ...book, sagaId, order: i }, currentUser.id);
+                }
+        }
+
+        // 5. Subir los libros de cada saga con su sagaId
+        for (const saga of library.sagas) {
+            const sagaId = sagaNameToId[saga.name];
+            for (const book of saga.books) {
+                await addBook({ ...book, sagaId }, currentUser.id);
+            }
+        }
+    } catch (err) {
+        console.error('Error sincronizando con Supabase:', err);
+    }
 }
 
 // ========================
@@ -258,7 +358,15 @@ function render(searchText = '') {
         document.getElementById('addSagaBtn').classList.add('hidden');
         saga.books
             .filter(b => b.title.toLowerCase().includes(search) && shouldShowBook(b))
-            .forEach(book => mainGrid.appendChild(createBookCard(book, true)));
+            .forEach(book => {
+                const bookCard = createBookCard(book, true);
+                if (isMultiSelectMode && selectedBookIds.includes(book.id)) {
+                    bookCard.classList.add('book-selected-aura');
+                } else {
+                    bookCard.classList.remove('book-selected-aura');
+                }
+                mainGrid.appendChild(bookCard);
+            });
     } else {
         viewTitle.innerText = "Biblioteca Personal";
         btnBack.classList.add('hidden');
@@ -271,28 +379,66 @@ function render(searchText = '') {
                 const card = document.createElement('div');
                 card.className = 'saga-card';
                 card.dataset.id = saga.id;
-                
+
                 // Filtrar libros de la saga según el filtro activo
                 const filteredBooks = saga.books.filter(b => shouldShowBook(b));
-                
-                // Crear previsualizaciones de portadas (solo de libros filtrados)
-                const booksPreview = filteredBooks.slice(0, 3).map(b => 
-                    `<img src="${b.cover}" class="saga-book-thumb" alt="${b.title}" onerror="this.src='https://via.placeholder.com/50x60?text=No'">`
-                ).join('');
-                
-                card.innerHTML = `<h3>${saga.name}</h3><span>${filteredBooks.length} LIBROS</span>
-                              <div class="saga-books-preview">${booksPreview}</div>
-                              <div class="card-actions" style="justify-content: center;">
-                                <button class="action-btn edit-btn" onclick="openEditSaga(event, ${saga.id})">Editar</button>
-                                <button class="action-btn delete-btn" onclick="deleteSaga(event, ${saga.id})">Borrar</button>
-                              </div>`;
-                card.onclick = () => { currentSagaId = saga.id; render(); };
+
+                // HTML limpio y correcto para la saga-card
+                card.innerHTML = `
+                    <h3>${saga.name}</h3>
+                    <span>${filteredBooks.length} LIBROS</span>
+                    <div class="saga-bg-animated"></div>
+                    <div class="card-actions" style="justify-content: center;">
+                        <button class="action-btn edit-btn" onclick="openEditSaga(event, ${saga.id})">Editar</button>
+                        <button class="action-btn delete-btn" onclick="deleteSaga(event, ${saga.id})">Borrar</button>
+                    </div>
+                `;
+                // Fondo animado de portadas al hacer hover
+                const bgDiv = card.querySelector('.saga-bg-animated');
+                let bgInterval = null;
+                let bgIdx = 0;
+                // Por defecto, sin fondo
+                bgDiv.style.backgroundImage = '';
+                bgDiv.style.opacity = 0;
+                card.addEventListener('mouseenter', function () {
+                    if (filteredBooks.length > 0) {
+                        bgIdx = 0;
+                        bgDiv.style.backgroundImage = `url('${filteredBooks[0].cover}')`;
+                        bgDiv.style.opacity = 1;
+                        if (filteredBooks.length > 1) {
+                            bgInterval = setInterval(() => {
+                                bgIdx = (bgIdx + 1) % filteredBooks.length;
+                                bgDiv.style.opacity = 0;
+                                setTimeout(() => {
+                                    bgDiv.style.backgroundImage = `url('${filteredBooks[bgIdx].cover}')`;
+                                    bgDiv.style.opacity = 1;
+                                }, 250);
+                            }, 2000);
+                        }
+                    }
+                });
+                card.addEventListener('mouseleave', function () {
+                    if (bgInterval) clearInterval(bgInterval);
+                    bgDiv.style.opacity = 0;
+                    setTimeout(() => {
+                        bgDiv.style.backgroundImage = '';
+                    }, 250);
+                });
+                card.onclick = () => { if (!isMultiSelectMode) { currentSagaId = saga.id; render(); } };
                 mainGrid.appendChild(card);
             });
 
         library.books
             .filter(b => b.title.toLowerCase().includes(search) && shouldShowBook(b))
-            .forEach(book => mainGrid.appendChild(createBookCard(book, false)));
+            .forEach(book => {
+                const bookCard = createBookCard(book, false);
+                if (isMultiSelectMode && selectedBookIds.includes(book.id)) {
+                    bookCard.classList.add('book-selected-aura');
+                } else {
+                    bookCard.classList.remove('book-selected-aura');
+                }
+                mainGrid.appendChild(bookCard);
+            });
     }
     updateStats();
 }
@@ -325,21 +471,78 @@ function createBookCard(book, isInsideSaga) {
 
     // Crear el elemento HTML de manera segura
     div.innerHTML = `
-        <img src="${book.cover}" 
-             alt="Portada de ${book.title}" 
-             onerror="this.src='https://via.placeholder.com/240x340?text=Sin+Imagen'">
-        <div class="book-content">
-            <p class="book-title">${book.title}</p>
-            <p class="book-author">${book.author}</p>
+        <div style=\"position:relative;\">
+            <img src=\"${book.cover}\" 
+                 alt=\"Portada de ${book.title}\" 
+                 onerror=\"this.src='https://via.placeholder.com/240x340?text=Sin+Imagen'\">
+        </div>
+        <div class=\"book-content\"> 
+            <p class=\"book-title\">${book.title}</p>
+            <p class=\"book-author\">${book.author}</p>
             ${ratingDisplay}
             ${pendingDisplay}
-            <div id="opinion-${book.id}"></div>
-            <div class="card-actions">
-                <button class="action-btn edit-btn" onclick="openEditBook(event, ${book.id}, ${isInsideSaga})">Editar</button>
-                <button class="action-btn delete-btn" onclick="deleteBook(event, ${book.id}, ${isInsideSaga})">Borrar</button>
+            <div id=\"opinion-${book.id}\"></div>
+            <div class=\"card-actions\"> 
+                <button class=\"action-btn edit-btn\" onclick=\"openEditBook(event, ${book.id}, ${isInsideSaga})\">Editar</button>
+                <button class=\"action-btn delete-btn\" onclick=\"deleteBook(event, ${book.id}, ${isInsideSaga})\">Borrar</button>
             </div>
         </div>
     `;
+    // Aura visual si está seleccionado
+    if (isMultiSelectMode && selectedBookIds.includes(book.id)) {
+        div.classList.add('book-selected-aura');
+    } else {
+        div.classList.remove('book-selected-aura');
+    }
+// ========================
+// SELECCIÓN MÚLTIPLE DE LIBROS
+// ========================
+const multiSelectBtn = document.getElementById('multiSelectBtn');
+const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+
+multiSelectBtn.onclick = () => {
+    isMultiSelectMode = !isMultiSelectMode;
+    selectedBookIds = [];
+    deleteSelectedBtn.style.display = isMultiSelectMode ? 'inline-block' : 'none';
+    multiSelectBtn.innerText = isMultiSelectMode ? 'Cancelar Selección' : 'Seleccionar Libros';
+    render(searchInput.value);
+};
+
+deleteSelectedBtn.onclick = () => {
+    if (selectedBookIds.length === 0) return alert('Selecciona al menos un libro.');
+    if (!confirm('¿Borrar los libros seleccionados?')) return;
+    // Borrar de libros sueltos
+    library.books = library.books.filter(b => !selectedBookIds.includes(b.id));
+    // Borrar de sagas
+    for (const saga of library.sagas) {
+        saga.books = saga.books.filter(b => !selectedBookIds.includes(b.id));
+    }
+    selectedBookIds = [];
+    save();
+    render(searchInput.value);
+};
+
+// Delegación de eventos para selección de libros por click
+mainGrid.addEventListener('click', (e) => {
+    // Buscar la tarjeta de libro más cercana
+    const bookCard = e.target.closest('.book-card');
+    if (!bookCard) return;
+    // Si está en modo selección múltiple y no se hace click en un botón de acción
+    if (isMultiSelectMode && !e.target.closest('.card-actions')) {
+        const bookId = parseInt(bookCard.dataset.id);
+        if (selectedBookIds.includes(bookId)) {
+            selectedBookIds = selectedBookIds.filter(id => id !== bookId);
+        } else {
+            selectedBookIds.push(bookId);
+        }
+        // Evitar que Sortable arrastre en modo selección múltiple
+        e.preventDefault();
+        e.stopPropagation();
+        render(searchInput.value);
+        return;
+    }
+    // Si no está en modo selección múltiple, dejar el comportamiento normal (drag, abrir saga, etc)
+});
 
     // PREVENCIÓN DE XSS: Insertar la opinión de forma segura usando textContent
     if (book.opinion) {
@@ -422,7 +625,6 @@ document.getElementById('bookForm').onsubmit = (e) => {
         readDate: document.getElementById('readDate').value || null,
         opinion: document.getElementById('opinion').value
     };
-
     if (id) {
         // Actualizar existente
         if (currentSagaId) {
@@ -441,7 +643,7 @@ document.getElementById('bookForm').onsubmit = (e) => {
     save();
     closeModals();
     e.target.reset();
-};
+}
 
 document.getElementById('sagaForm').onsubmit = (e) => {
     e.preventDefault();
@@ -449,6 +651,39 @@ document.getElementById('sagaForm').onsubmit = (e) => {
     const name = document.getElementById('sagaName').value;
 
     if (id) {
+                // Añadir libros a sagas, ordenados por 'order'
+                const sagaBooks = booksData.filter(b => b.saga_id);
+                const looseBooks = booksData.filter(b => !b.saga_id);
+
+                for (const saga of library.sagas) {
+                    const booksForSaga = sagaBooks
+                        .filter(b => b.saga_id === saga.id)
+                        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+                    saga.books = booksForSaga.map(b => ({
+                        id: b.id,
+                        title: b.title,
+                        author: b.author,
+                        cover: b.cover,
+                        rating: b.rating,
+                        readDate: b.read_date,
+                        opinion: b.opinion,
+                        isPending: b.is_pending,
+                    }));
+                }
+
+                // Añadir libros sueltos, ordenados por 'order'
+                library.books = looseBooks
+                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                    .map(b => ({
+                        id: b.id,
+                        title: b.title,
+                        author: b.author,
+                        cover: b.cover,
+                        rating: b.rating,
+                        readDate: b.read_date,
+                        opinion: b.opinion,
+                        isPending: b.is_pending,
+                    }));
         library.sagas.find(s => s.id == id).name = name;
     } else {
         library.sagas.push({ id: Date.now(), name: name, books: [] });
