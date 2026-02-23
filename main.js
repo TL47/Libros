@@ -1,4 +1,115 @@
+document.getElementById('findCoverOpenLibBtn').onclick = async function() {
+    const title = document.getElementById('title').value.trim();
+    const author = document.getElementById('author').value.trim();
+    const coverOptions = document.getElementById('coverOptions');
+    const coverModal = document.getElementById('coverModal');
+    coverOptions.innerHTML = '';
+    if (!title) {
+        coverOptions.innerHTML = '<span style="color: #c00">Debes introducir un título para buscar portadas.</span>';
+        return;
+    }
+    // Llama a Open Library Search API usando un proxy CORS
+    const proxy = 'http://localhost:3000/proxy?url=';
+    const url = `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`;
+    let data = null;
+    coverModal.style.display = 'flex';
+    try {
+        const res = await fetch(proxy + encodeURIComponent(url));
+        if (!res.ok) throw new Error('Error de red o del proxy');
+        data = await res.json();
+    } catch (err) {
+        coverOptions.innerHTML = `<span style=\"color: #c00\">No se pudo conectar con Open Library. Detalle: ${err.message}</span>`;
+        return;
+    }
+    if (data && data.docs && data.docs.length > 0) {
+        let found = false;
+        data.docs.forEach(doc => {
+            if (doc.cover_i) {
+                found = true;
+                const imgUrl = `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
+                const imgElem = document.createElement('img');
+                imgElem.src = imgUrl;
+                imgElem.alt = doc.title;
+                imgElem.style.width = '80px';
+                imgElem.style.height = '120px';
+                imgElem.style.cursor = 'pointer';
+                imgElem.title = 'Elegir esta portada';
+                imgElem.onclick = () => {
+                    const coverInput = document.getElementById('cover');
+                    coverInput.value = imgUrl;
+                    coverModal.style.display = 'none';
+                    coverInput.focus();
+                    coverInput.select();
+                };
+                coverOptions.appendChild(imgElem);
+            }
+        });
+        if (!found) {
+            coverOptions.innerHTML = '<span style="color: #c00">No se encontraron portadas en Open Library.</span>';
+        }
+    } else {
+        coverOptions.innerHTML = '<span style=\"color: #c00\">No se encontró el libro en Open Library.</span>';
+    }
+};
+// Estado para selección múltiple
+let isMultiSelectMode = false;
+let selectedBookIds = [];
 // ========================
+// BUSCAR PORTADA AUTOMÁTICA EN MODAL
+document.getElementById('findCoverBtn').onclick = async function() {
+    const title = document.getElementById('title').value;
+    const author = document.getElementById('author').value;
+    const coverOptions = document.getElementById('coverOptions');
+    const coverModal = document.getElementById('coverModal');
+    coverOptions.innerHTML = '';
+    if (!title) return alert('Introduce el título');
+    // Llama a Google Books API con idioma español
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=intitle:${encodeURIComponent(title)}+inauthor:${encodeURIComponent(author)}&langRestrict=es`);
+    const data = await res.json();
+    coverModal.style.display = 'flex';
+    if (data.items && data.items.length > 0) {
+        let found = false;
+        data.items.forEach(item => {
+            const img = item.volumeInfo.imageLinks?.thumbnail || item.volumeInfo.imageLinks?.smallThumbnail;
+            if (img) {
+                found = true;
+                const imgUrl = img.replace('http:', 'https:');
+                const imgElem = document.createElement('img');
+                imgElem.src = imgUrl;
+                imgElem.alt = item.volumeInfo.title;
+                imgElem.style.width = '80px';
+                imgElem.style.height = '120px';
+                imgElem.style.cursor = 'pointer';
+                imgElem.title = 'Elegir esta portada';
+                imgElem.onclick = () => {
+                    const coverInput = document.getElementById('cover');
+                    coverInput.value = imgUrl;
+                    coverModal.style.display = 'none';
+                    // Enfocar y seleccionar el campo para permitir edición manual
+                    coverInput.focus();
+                    coverInput.select();
+                };
+                coverOptions.appendChild(imgElem);
+            }
+        });
+        if (!found) {
+            coverOptions.innerHTML = '<span style="color: #c00">No se encontraron portadas.</span>';
+        }
+    } else {
+        coverOptions.innerHTML = '<span style=\"color: #c00\">No se encontró el libro.</span>';
+    }
+};
+
+// Cerrar el modal de portadas sugeridas
+document.getElementById('closeCoverModal').onclick = function() {
+    document.getElementById('coverModal').style.display = 'none';
+};
+// Cerrar el modal si se hace clic fuera del contenido
+document.getElementById('coverModal').addEventListener('click', function(e) {
+    if (e.target.id === 'coverModal') {
+        document.getElementById('coverModal').style.display = 'none';
+    }
+});
 // IMPORTS SUPABASE
 // ========================
 // Asegúrate de que estas funciones estén exportadas en supabaseConfig.js
@@ -15,13 +126,6 @@ let currentEditingSagaId = null;
 let currentFilter = 'all'; // Filtro activo
 let currentUser = null; // Usuario actual
 let isUsingSupabase = false; // Flag para usar Supabase o localStorage
-let idCounter = Date.now(); // Contador para generar IDs únicos sin decimales
-
-// Función para generar IDs únicos
-function generateUniqueId() {
-    idCounter++;
-    return idCounter;
-}
 
 const mainGrid = document.getElementById('mainGrid');
 const viewTitle = document.getElementById('viewTitle');
@@ -298,6 +402,14 @@ async function syncToSupabase() {
                     await addBook({ ...book, sagaId, order: i }, currentUser.id);
                 }
         }
+
+        // 5. Subir los libros de cada saga con su sagaId
+        for (const saga of library.sagas) {
+            const sagaId = sagaNameToId[saga.name];
+            for (const book of saga.books) {
+                await addBook({ ...book, sagaId }, currentUser.id);
+            }
+        }
     } catch (err) {
         console.error('Error sincronizando con Supabase:', err);
     }
@@ -319,102 +431,15 @@ function importFromClipboard() {
         try {
             const parsed = JSON.parse(data);
             if (parsed.books && parsed.sagas) {
-                if (confirm("¿Quieres importar estos libros a tu biblioteca? Si hay libros con el mismo título y autor, se reemplazarán.")) {
-                    const idMap = {}; // Mapear IDs antiguos a nuevos sagas
-                    
-                    // Procesar sagas: crear nuevas o actualizar existentes
-                    for (const saga of parsed.sagas) {
-                        // Buscar si la saga ya existe por nombre
-                        let existingSaga = library.sagas.find(s => s.name === saga.name);
-                        
-                        if (existingSaga) {
-                            // Saga existe: reemplazar sus libros
-                            idMap[saga.id] = existingSaga.id;
-                            existingSaga.books = [];
-                        } else {
-                            // Saga nueva: crear con nuevo ID
-                            const newSagaId = generateUniqueId();
-                            idMap[saga.id] = newSagaId;
-                            library.sagas.push({
-                                id: newSagaId,
-                                name: saga.name,
-                                books: [],
-                                order: saga.order || 0
-                            });
-                        }
-                    }
-                    
-                    // Procesar libros sueltos
-                    for (const book of parsed.books) {
-                        // Buscar si el libro ya existe (por título + autor)
-                        const existingBookIndex = library.books.findIndex(b => 
-                            b.title.toLowerCase() === book.title.toLowerCase() && 
-                            b.author.toLowerCase() === book.author.toLowerCase()
-                        );
-                        
-                        const bookData = {
-                            id: existingBookIndex !== -1 ? library.books[existingBookIndex].id : generateUniqueId(),
-                            title: book.title,
-                            author: book.author,
-                            cover: book.cover,
-                            rating: book.rating,
-                            readDate: book.readDate || null,
-                            opinion: book.opinion || null,
-                            isPending: book.isPending || false,
-                            order: book.order || 0
-                        };
-                        
-                        if (existingBookIndex !== -1) {
-                            // Reemplazar existente
-                            library.books[existingBookIndex] = bookData;
-                        } else {
-                            // Añadir nuevo
-                            library.books.push(bookData);
-                        }
-                    }
-                    
-                    // Procesar libros de sagas
-                    for (const saga of parsed.sagas) {
-                        const sagaId = idMap[saga.id];
-                        const sagaInLibrary = library.sagas.find(s => s.id === sagaId);
-                        
-                        for (const book of saga.books) {
-                            // Buscar si el libro ya existe en la saga
-                            const existingBookIndex = sagaInLibrary.books.findIndex(b => 
-                                b.title.toLowerCase() === book.title.toLowerCase() && 
-                                b.author.toLowerCase() === book.author.toLowerCase()
-                            );
-                            
-                            const bookData = {
-                                id: existingBookIndex !== -1 ? sagaInLibrary.books[existingBookIndex].id : generateUniqueId(),
-                                title: book.title,
-                                author: book.author,
-                                cover: book.cover,
-                                rating: book.rating,
-                                readDate: book.readDate || null,
-                                opinion: book.opinion || null,
-                                isPending: book.isPending || false,
-                                order: book.order || 0
-                            };
-                            
-                            if (existingBookIndex !== -1) {
-                                // Reemplazar existente
-                                sagaInLibrary.books[existingBookIndex] = bookData;
-                            } else {
-                                // Añadir nuevo
-                                sagaInLibrary.books.push(bookData);
-                            }
-                        }
-                    }
-                    
+                if (confirm("¿Quieres sobrescribir tu biblioteca actual con los datos pegados?")) {
+                    library = parsed;
                     save();
-                    alert("✅ Biblioteca importada correctamente. Los libros nuevos se han añadido y los duplicados se han actualizado.");
                 }
             } else {
                 alert("El código no parece ser válido.");
             }
         } catch (e) {
-            alert("Error al procesar los datos: " + e.message);
+            alert("Error al procesar los datos.");
         }
     }
 }
@@ -443,6 +468,11 @@ function render(searchText = '') {
             .filter(b => b.title.toLowerCase().includes(search) && shouldShowBook(b))
             .forEach(book => {
                 const bookCard = createBookCard(book, true);
+                if (isMultiSelectMode && selectedBookIds.includes(book.id)) {
+                    bookCard.classList.add('book-selected-aura');
+                } else {
+                    bookCard.classList.remove('book-selected-aura');
+                }
                 mainGrid.appendChild(bookCard);
             });
     } else {
@@ -502,7 +532,7 @@ function render(searchText = '') {
                         bgDiv.style.backgroundImage = '';
                     }, 250);
                 });
-                card.onclick = () => { currentSagaId = saga.id; render(); };
+                card.onclick = () => { if (!isMultiSelectMode) { currentSagaId = saga.id; render(); } };
                 mainGrid.appendChild(card);
             });
 
@@ -510,6 +540,11 @@ function render(searchText = '') {
             .filter(b => b.title.toLowerCase().includes(search) && shouldShowBook(b))
             .forEach(book => {
                 const bookCard = createBookCard(book, false);
+                if (isMultiSelectMode && selectedBookIds.includes(book.id)) {
+                    bookCard.classList.add('book-selected-aura');
+                } else {
+                    bookCard.classList.remove('book-selected-aura');
+                }
                 mainGrid.appendChild(bookCard);
             });
     }
@@ -561,8 +596,61 @@ function createBookCard(book, isInsideSaga) {
             </div>
         </div>
     `;
+    // Aura visual si está seleccionado
+    if (isMultiSelectMode && selectedBookIds.includes(book.id)) {
+        div.classList.add('book-selected-aura');
+    } else {
+        div.classList.remove('book-selected-aura');
+    }
+// ========================
+// SELECCIÓN MÚLTIPLE DE LIBROS
+// ========================
+const multiSelectBtn = document.getElementById('multiSelectBtn');
+const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
 
+multiSelectBtn.onclick = () => {
+    isMultiSelectMode = !isMultiSelectMode;
+    selectedBookIds = [];
+    deleteSelectedBtn.style.display = isMultiSelectMode ? 'inline-block' : 'none';
+    multiSelectBtn.innerText = isMultiSelectMode ? 'Cancelar Selección' : 'Seleccionar Libros';
+    render(searchInput.value);
+};
 
+deleteSelectedBtn.onclick = () => {
+    if (selectedBookIds.length === 0) return alert('Selecciona al menos un libro.');
+    if (!confirm('¿Borrar los libros seleccionados?')) return;
+    // Borrar de libros sueltos
+    library.books = library.books.filter(b => !selectedBookIds.includes(b.id));
+    // Borrar de sagas
+    for (const saga of library.sagas) {
+        saga.books = saga.books.filter(b => !selectedBookIds.includes(b.id));
+    }
+    selectedBookIds = [];
+    save();
+    render(searchInput.value);
+};
+
+// Delegación de eventos para selección de libros por click
+mainGrid.addEventListener('click', (e) => {
+    // Buscar la tarjeta de libro más cercana
+    const bookCard = e.target.closest('.book-card');
+    if (!bookCard) return;
+    // Si está en modo selección múltiple y no se hace click en un botón de acción
+    if (isMultiSelectMode && !e.target.closest('.card-actions')) {
+        const bookId = parseInt(bookCard.dataset.id);
+        if (selectedBookIds.includes(bookId)) {
+            selectedBookIds = selectedBookIds.filter(id => id !== bookId);
+        } else {
+            selectedBookIds.push(bookId);
+        }
+        // Evitar que Sortable arrastre en modo selección múltiple
+        e.preventDefault();
+        e.stopPropagation();
+        render(searchInput.value);
+        return;
+    }
+    // Si no está en modo selección múltiple, dejar el comportamiento normal (drag, abrir saga, etc)
+});
 
     // PREVENCIÓN DE XSS: Insertar la opinión de forma segura usando textContent
     if (book.opinion) {
@@ -637,7 +725,7 @@ document.getElementById('bookForm').onsubmit = (e) => {
     }
     
     const bookData = {
-        id: id ? parseInt(id) : generateUniqueId(),
+        id: id ? parseInt(id) : Date.now(),
         title: title,
         author: author,
         cover: document.getElementById('cover').value,
@@ -706,7 +794,7 @@ document.getElementById('sagaForm').onsubmit = (e) => {
                     }));
         library.sagas.find(s => s.id == id).name = name;
     } else {
-        library.sagas.push({ id: generateUniqueId(), name: name, books: [] });
+        library.sagas.push({ id: Date.now(), name: name, books: [] });
     }
     save();
     closeModals();
@@ -844,257 +932,6 @@ filterButtons.forEach(btn => {
         currentFilter = e.target.dataset.filter;
         render(searchInput.value);
     });
-});
-
-// ========================
-// BÚSQUEDA DE PORTADAS
-// ========================
-const searchCoverBtn = document.getElementById('searchCoverBtn');
-const coverSearchModal = document.getElementById('coverSearchModal');
-const coverSearchButton = document.getElementById('coverSearchButton');
-const coverSearchInput = document.getElementById('coverSearchInput');
-
-let coverSearchPage = 1; // Página actual de resultados
-
-searchCoverBtn.onclick = (e) => {
-    e.preventDefault();
-    const title = document.getElementById('title').value;
-    const author = document.getElementById('author').value;
-    
-    // Usar el título para buscar
-    if (title) {
-        coverSearchInput.value = title;
-    } else if (author) {
-        coverSearchInput.value = author;
-    }
-    
-    coverSearchPage = 1; // Resetear a primera página
-    coverSearchModal.style.display = 'flex';
-};
-
-function closeCoverSearchModal() {
-    coverSearchModal.style.display = 'none';
-    document.getElementById('coverSearchResults').innerHTML = '';
-    coverSearchPage = 1;
-}
-
-coverSearchButton.onclick = async () => {
-    const searchQuery = coverSearchInput.value.trim();
-    if (!searchQuery) {
-        alert('Por favor ingresa un título o autor para buscar.');
-        return;
-    }
-    
-    coverSearchPage = 1;
-    await searchBookImages(searchQuery, coverSearchPage);
-};
-
-// Enter en el input
-coverSearchInput.onkeypress = (e) => {
-    if (e.key === 'Enter') {
-        e.preventDefault();
-        coverSearchButton.click();
-    }
-};
-
-async function searchBookImages(query, page = 1) {
-    const loadingDiv = document.getElementById('coverSearchLoading');
-    const resultsDiv = document.getElementById('coverSearchResults');
-    
-    loadingDiv.style.display = 'block';
-    resultsDiv.innerHTML = '';
-    
-    try {
-        console.log('🔍 Buscando en Unsplash:', query, 'Página:', page);
-        
-        // Unsplash API - Búsqueda de imágenes de alta calidad
-        // Esta API funciona sin credenciales incluidas en el URL para búsquedas públicas
-        const perPage = 10;
-        const searchUrl = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query + ' book cover')}&page=${page}&per_page=${perPage}&client_id=OTja5Jrkk6MbgeRUBuiFf8RNqqW2-K0PQJa_5vpF_V4`;
-        
-        const response = await fetch(searchUrl, {
-            headers: {
-                'Accept-Version': 'v1'
-            }
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Unsplash API error: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        console.log('📸 Resultados Unsplash:', data);
-        
-        if (!data.results || data.results.length === 0) {
-            resultsDiv.innerHTML = `
-                <p style="grid-column: 1/-1; text-align: center; color: var(--cloud-grey); margin: 20px 0;">
-                    No se encontraron imágenes para: "${query}"
-                    <br><br>
-                    Intenta:
-                    <br>• Escribir solo el título del libro
-                    <br>• Buscar en inglés
-                    <br>• O pegar una URL de portada manualmente
-                </p>
-            `;
-            loadingDiv.style.display = 'none';
-            return;
-        }
-        
-        // Convertir resultados de Unsplash a nuestro formato
-        const imageUrls = data.results.map(photo => ({
-            url: photo.urls.small,
-            large: photo.urls.regular,
-            title: photo.alt_description || photo.description || 'Book cover',
-            author: photo.user.name
-        }));
-        
-        console.log('✅ Imágenes encontradas:', imageUrls.length);
-        displaySearchImageResults(imageUrls, query, page, data.total > (page * perPage));
-        
-    } catch (error) {
-        console.error('❌ Error en Unsplash:', error);
-        resultsDiv.innerHTML = `
-            <p style="grid-column: 1/-1; text-align: center; color: red;">
-                Error: ${error.message}
-                <br><br>
-                <small>Intenta:</small>
-                <br>• Pegar una URL de portada manualmente
-                <br>• Esperar unos segundos y reintentar
-                <br>• Verificar tu conexión
-            </p>
-        `;
-    }
-    
-    loadingDiv.style.display = 'none';
-}
-
-function displaySearchImageResults(imageUrls, query, page) {
-    const resultsDiv = document.getElementById('coverSearchResults');
-    resultsDiv.innerHTML = '';
-    
-    const resultsPerPage = 10;
-    const startIdx = (page - 1) * resultsPerPage;
-    const endIdx = startIdx + resultsPerPage;
-    const paginatedUrls = imageUrls.slice(startIdx, endIdx);
-    
-    console.log(`📸 Mostrando portadas ${startIdx + 1} a ${Math.min(endIdx, imageUrls.length)} de ${imageUrls.length}`);
-    
-    if (paginatedUrls.length === 0) {
-        resultsDiv.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: var(--cloud-grey);">No hay más resultados.</p>';
-        return;
-    }
-    
-    // Mostrar imágenes
-    paginatedUrls.forEach((item) => {
-        // item puede ser un objeto {url, large, title, author} o solo una URL string
-        const imgUrl = item.url || item;
-        const fullUrl = item.large || imgUrl;
-        
-        const wrapper = document.createElement('div');
-        wrapper.style.cursor = 'pointer';
-        wrapper.style.position = 'relative';
-        wrapper.style.overflow = 'hidden';
-        wrapper.style.borderRadius = '8px';
-        wrapper.style.transition = 'transform 0.2s';
-        wrapper.style.backgroundColor = '#1a1a1a';
-        wrapper.style.minHeight = '200px';
-        
-        const img = document.createElement('img');
-        img.src = imgUrl;
-        img.style.cursor = 'pointer';
-        img.style.borderRadius = '8px';
-        img.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
-        img.style.width = '100%';
-        img.style.aspectRatio = '3/4';
-        img.style.objectFit = 'cover';
-        img.style.backgroundColor = '#222';
-        
-        if (item.title) {
-            img.title = `${item.title}${item.author ? ' - ' + item.author : ''}`;
-        }
-        
-        wrapper.onmouseover = () => {
-            wrapper.style.transform = 'scale(1.05)';
-        };
-        
-        wrapper.onmouseout = () => {
-            wrapper.style.transform = 'scale(1)';
-        };
-        
-        img.onclick = () => {
-            document.getElementById('cover').value = fullUrl;
-            closeCoverSearchModal();
-        };
-        
-        img.onerror = () => {
-            console.warn('⚠️ No se pudo cargar:', imgUrl);
-            wrapper.style.display = 'none';
-        };
-        
-        wrapper.appendChild(img);
-        resultsDiv.appendChild(wrapper);
-    });
-    
-    // Agregar controles de paginación
-    const totalPages = Math.ceil(imageUrls.length / resultsPerPage);
-    if (totalPages > 1) {
-        const paginationDiv = document.createElement('div');
-        paginationDiv.style.gridColumn = '1/-1';
-        paginationDiv.style.display = 'flex';
-        paginationDiv.style.justifyContent = 'center';
-        paginationDiv.style.gap = '10px';
-        paginationDiv.style.marginTop = '20px';
-        paginationDiv.style.paddingTop = '20px';
-        paginationDiv.style.borderTop = '1px solid var(--tommen-green)';
-        
-        if (page > 1) {
-            const prevBtn = document.createElement('button');
-            prevBtn.textContent = '← Anterior';
-            prevBtn.className = 'btn btn-main';
-            prevBtn.style.marginTop = '0';
-            prevBtn.style.padding = '10px 15px';
-            prevBtn.style.fontSize = '0.9rem';
-            prevBtn.onclick = async () => {
-                coverSearchPage = page - 1;
-                const searchQuery = coverSearchInput.value;
-                await searchBookImages(searchQuery, page - 1);
-                document.getElementById('coverSearchResults').scrollIntoView({ behavior: 'smooth' });
-            };
-            paginationDiv.appendChild(prevBtn);
-        }
-        
-        const pageInfo = document.createElement('span');
-        pageInfo.textContent = `${page} de ${totalPages}`;
-        pageInfo.style.color = 'var(--cloud-grey)';
-        pageInfo.style.alignSelf = 'center';
-        pageInfo.style.fontWeight = 'bold';
-        paginationDiv.appendChild(pageInfo);
-        
-        if (page < totalPages) {
-            const nextBtn = document.createElement('button');
-            nextBtn.textContent = 'Siguiente →';
-            nextBtn.className = 'btn btn-main';
-            nextBtn.style.marginTop = '0';
-            nextBtn.style.padding = '10px 15px';
-            nextBtn.style.fontSize = '0.9rem';
-            nextBtn.onclick = async () => {
-                coverSearchPage = page + 1;
-                const searchQuery = coverSearchInput.value;
-                await searchBookImages(searchQuery, page + 1);
-                document.getElementById('coverSearchResults').scrollIntoView({ behavior: 'smooth' });
-            };
-            paginationDiv.appendChild(nextBtn);
-        }
-        
-        resultsDiv.appendChild(paginationDiv);
-    }
-}
-
-// Cerrar modal al hacer clic en el overlay
-coverSearchModal.addEventListener('click', (e) => {
-    if (e.target.id === 'coverSearchModal') {
-        closeCoverSearchModal();
-    }
 });
 
 // ========================

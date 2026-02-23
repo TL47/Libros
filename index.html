@@ -51,6 +51,8 @@
                 <input type="text" id="searchInput" placeholder="Buscar título o autor...">
                 <button id="addBookBtn" class="btn btn-main">+ AÑADIR LIBRO</button>
                 <button id="addSagaBtn" class="btn btn-saga">+ CREAR SAGA</button>
+                <button id="multiSelectBtn" class="btn btn-saga" style="background: #c5a059; color: #1a2a44;">Seleccionar Libros</button>
+                <button id="deleteSelectedBtn" class="btn btn-main" style="display:none; background: #ff6b6b; color: white;">Borrar Seleccionados</button>
             </div>
             <div class="filter-controls" id="filterControls">
                 <button class="filter-btn active" data-filter="all">📚 TODOS</button>
@@ -78,12 +80,17 @@
                 <input type="hidden" id="editBookId">
                 <input type="text" id="title" placeholder="Título" required>
                 <input type="text" id="author" placeholder="Autor/a" required>
-                <div style="display: flex; gap: 10px; align-items: flex-end;">
-                    <div style="flex: 1;">
-                        <input type="url" id="cover" placeholder="URL de la Imagen" required>
-                    </div>
-                    <button type="button" id="searchCoverBtn" class="btn btn-main" style="white-space: nowrap;">🔍 Buscar Portada</button>
-                </div>
+                <input type="url" id="cover" placeholder="URL de la Imagen" required>
+                                <button type="button" id="findCoverBtn" style="margin-bottom: 10px;">Buscar portada</button>
+                                <button type="button" id="findCoverOpenLibBtn" style="margin-bottom: 10px; margin-left: 10px;">Buscar en Open Library</button>
+                                <!-- Modal para elegir portada sugerida -->
+                                <div id="coverModal" class="modal" style="display:none; align-items:center; justify-content:center;">
+                                    <div class="modal-content" style="max-width: 600px;">
+                                        <h3>Elige una portada</h3>
+                                        <div id="coverOptions" style="display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0 0 0;"></div>
+                                        <button type="button" class="btn btn-cancel" id="closeCoverModal">Cancelar</button>
+                                    </div>
+                                </div>
                 <select id="rating" required>
                     <option value="0">Valoración</option>
                     <option value="6">Leyendo</option>
@@ -98,23 +105,6 @@
                 <button type="submit" id="saveBookBtn" class="btn btn-main" style="width: 100%">GUARDAR</button>
                 <button type="button" class="btn btn-cancel" onclick="closeModals()">CANCELAR</button>
             </form>
-        </div>
-    </div>
-
-    <div id="coverSearchModal" class="modal">
-        <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
-            <h2 style="font-family: 'Oswald'; color: var(--st-pats-gold); margin-bottom: 1rem;">BUSCAR PORTADA</h2>
-            <div style="display: flex; gap: 10px; margin-bottom: 1rem;">
-                <input type="text" id="coverSearchInput" placeholder="Buscar por título o autor..." style="flex: 1;">
-                <button id="coverSearchButton" class="btn btn-main">Buscar</button>
-            </div>
-            <div id="coverSearchResults" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 1rem;">
-                <!-- Los resultados se mostrarán aquí -->
-            </div>
-            <div id="coverSearchLoading" style="text-align: center; display: none; margin: 20px 0;">
-                <p>Buscando portadas...</p>
-            </div>
-            <button type="button" class="btn btn-cancel" onclick="closeCoverSearchModal()" style="width: 100%;">CERRAR</button>
         </div>
     </div>
 
