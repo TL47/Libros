@@ -1,0 +1,21 @@
+{
+  "name": "Biblioteca Personal",
+  "short_name": "Biblioteca",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#c5a059",
+  "description": "Gestiona tu biblioteca personal, valoraciones y portadas.",
+  "icons": [
+    {
+      "src": "logo_biblioteca.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "logo_biblioteca.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
