@@ -1,56 +1,100 @@
-document.getElementById('findCoverOpenLibBtn').onclick = async function() {
-    const title = document.getElementById('title').value.trim();
-    const author = document.getElementById('author').value.trim();
-    const coverOptions = document.getElementById('coverOptions');
-    const coverModal = document.getElementById('coverModal');
-    coverOptions.innerHTML = '';
-    if (!title) {
-        coverOptions.innerHTML = '<span style="color: #c00">Debes introducir un título para buscar portadas.</span>';
+// Autocompletado visual (ghost text) para el título
+const titleInput = document.getElementById('title');
+const titleGhost = document.getElementById('titleGhost');
+const authorInput = document.getElementById('author');
+const authorDatalist = document.getElementById('authorSuggestions');
+
+let lastTitleQuery = '';
+let titleSuggestions = [];
+let ghostActive = false;
+
+titleInput.addEventListener('input', async function(e) {
+    const title = titleInput.value;
+    if (title.length < 3) {
+        titleGhost.textContent = '';
         return;
     }
-    // Llama a Open Library Search API usando un proxy CORS
-    const proxy = 'http://localhost:3000/proxy?url=';
-    const url = `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`;
-    let data = null;
-    coverModal.style.display = 'flex';
-    try {
-        const res = await fetch(proxy + encodeURIComponent(url));
-        if (!res.ok) throw new Error('Error de red o del proxy');
-        data = await res.json();
-    } catch (err) {
-        coverOptions.innerHTML = `<span style=\"color: #c00\">No se pudo conectar con Open Library. Detalle: ${err.message}</span>`;
-        return;
-    }
-    if (data && data.docs && data.docs.length > 0) {
-        let found = false;
-        data.docs.forEach(doc => {
-            if (doc.cover_i) {
-                found = true;
-                const imgUrl = `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
-                const imgElem = document.createElement('img');
-                imgElem.src = imgUrl;
-                imgElem.alt = doc.title;
-                imgElem.style.width = '80px';
-                imgElem.style.height = '120px';
-                imgElem.style.cursor = 'pointer';
-                imgElem.title = 'Elegir esta portada';
-                imgElem.onclick = () => {
-                    const coverInput = document.getElementById('cover');
-                    coverInput.value = imgUrl;
-                    coverModal.style.display = 'none';
-                    coverInput.focus();
-                    coverInput.select();
-                };
-                coverOptions.appendChild(imgElem);
+    if (title !== lastTitleQuery) {
+        lastTitleQuery = title;
+        try {
+            const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=intitle:${encodeURIComponent(title)}&maxResults=10`);
+            const data = await res.json();
+            titleSuggestions = [];
+            const authors = new Set();
+            if (data.items) {
+                data.items.forEach(item => {
+                    if (item.volumeInfo) {
+                        if (item.volumeInfo.title) titleSuggestions.push(item.volumeInfo.title);
+                        if (item.volumeInfo.authors) item.volumeInfo.authors.forEach(a => authors.add(a));
+                    }
+                });
             }
-        });
-        if (!found) {
-            coverOptions.innerHTML = '<span style="color: #c00">No se encontraron portadas en Open Library.</span>';
+            authorDatalist.innerHTML = '';
+            Array.from(authors).forEach(author => {
+                const option = document.createElement('option');
+                option.value = author;
+                authorDatalist.appendChild(option);
+            });
+        } catch (e) {
+            titleSuggestions = [];
+            authorDatalist.innerHTML = '';
         }
-    } else {
-        coverOptions.innerHTML = '<span style=\"color: #c00\">No se encontró el libro en Open Library.</span>';
     }
-};
+    // Buscar la mejor sugerencia que empiece por el texto actual (case-insensitive)
+    const lower = title.toLowerCase();
+    const match = titleSuggestions.find(s => s.toLowerCase().startsWith(lower) && s.length > title.length);
+    if (match) {
+        // Medir el ancho del texto ya escrito para posicionar el ghost
+        const span = document.createElement('span');
+        span.style.visibility = 'hidden';
+        span.style.position = 'absolute';
+        span.style.whiteSpace = 'pre';
+        span.style.fontFamily = getComputedStyle(titleInput).fontFamily;
+        span.style.fontSize = getComputedStyle(titleInput).fontSize;
+        span.style.fontWeight = getComputedStyle(titleInput).fontWeight;
+        span.style.letterSpacing = getComputedStyle(titleInput).letterSpacing;
+        span.textContent = title;
+        document.body.appendChild(span);
+        const offset = span.offsetWidth;
+        document.body.removeChild(span);
+        titleGhost.style.left = (offset + 7) + 'px'; // 7px = input padding - 5px para acercar
+        titleGhost.textContent = match.substring(title.length);
+        titleGhost.style.display = 'flex';
+    } else {
+        titleGhost.textContent = '';
+        titleGhost.style.display = 'none';
+        titleGhost.style.left = '0';
+    }
+});
+
+// Si el usuario pulsa Tab y hay ghost, autocompletar el texto original + ghost
+titleInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Tab' && titleGhost.textContent) {
+        e.preventDefault();
+        titleInput.value = titleInput.value + titleGhost.textContent;
+        titleGhost.textContent = '';
+        // Lanzar evento input para refrescar sugerencias de autor
+        titleInput.dispatchEvent(new Event('input'));
+    }
+});
+// Asignar fecha de lectura automáticamente al seleccionar una valoración de estrellas
+document.getElementById('rating').addEventListener('change', function() {
+    const val = parseInt(this.value);
+    const readDateInput = document.getElementById('readDate');
+    if (val >= 1 && val <= 5) {
+        // Solo para estrellas
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        readDateInput.value = `${yyyy}-${mm}-${dd}`;
+        readDateInput.disabled = true;
+    } else {
+        // Para 'Leyendo' y 'Valoración', permitir edición manual
+        readDateInput.value = '';
+        readDateInput.disabled = false;
+    }
+});
 // Estado para selección múltiple
 let isMultiSelectMode = false;
 let selectedBookIds = [];
@@ -597,60 +641,8 @@ function createBookCard(book, isInsideSaga) {
         </div>
     `;
     // Aura visual si está seleccionado
-    if (isMultiSelectMode && selectedBookIds.includes(book.id)) {
-        div.classList.add('book-selected-aura');
-    } else {
-        div.classList.remove('book-selected-aura');
-    }
-// ========================
-// SELECCIÓN MÚLTIPLE DE LIBROS
-// ========================
-const multiSelectBtn = document.getElementById('multiSelectBtn');
-const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
-
-multiSelectBtn.onclick = () => {
-    isMultiSelectMode = !isMultiSelectMode;
-    selectedBookIds = [];
-    deleteSelectedBtn.style.display = isMultiSelectMode ? 'inline-block' : 'none';
-    multiSelectBtn.innerText = isMultiSelectMode ? 'Cancelar Selección' : 'Seleccionar Libros';
-    render(searchInput.value);
-};
-
-deleteSelectedBtn.onclick = () => {
-    if (selectedBookIds.length === 0) return alert('Selecciona al menos un libro.');
-    if (!confirm('¿Borrar los libros seleccionados?')) return;
-    // Borrar de libros sueltos
-    library.books = library.books.filter(b => !selectedBookIds.includes(b.id));
-    // Borrar de sagas
-    for (const saga of library.sagas) {
-        saga.books = saga.books.filter(b => !selectedBookIds.includes(b.id));
-    }
-    selectedBookIds = [];
-    save();
-    render(searchInput.value);
-};
-
-// Delegación de eventos para selección de libros por click
-mainGrid.addEventListener('click', (e) => {
-    // Buscar la tarjeta de libro más cercana
-    const bookCard = e.target.closest('.book-card');
-    if (!bookCard) return;
-    // Si está en modo selección múltiple y no se hace click en un botón de acción
-    if (isMultiSelectMode && !e.target.closest('.card-actions')) {
-        const bookId = parseInt(bookCard.dataset.id);
-        if (selectedBookIds.includes(bookId)) {
-            selectedBookIds = selectedBookIds.filter(id => id !== bookId);
-        } else {
-            selectedBookIds.push(bookId);
-        }
-        // Evitar que Sortable arrastre en modo selección múltiple
-        e.preventDefault();
-        e.stopPropagation();
-        render(searchInput.value);
-        return;
-    }
-    // Si no está en modo selección múltiple, dejar el comportamiento normal (drag, abrir saga, etc)
-});
+    // ...eliminado selección múltiple...
+// ...eliminado selección múltiple...
 
     // PREVENCIÓN DE XSS: Insertar la opinión de forma segura usando textContent
     if (book.opinion) {

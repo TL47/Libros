@@ -1,3 +1,51 @@
+/* Ghost autocompletado para título */
+.autocomplete-title-wrapper {
+    position: relative;
+    width: 100%;
+}
+#title {
+    position: relative;
+    background: transparent;
+    z-index: 2;
+}
+#titleGhost {
+    position: absolute;
+    left: 0;
+    top: -10px;
+    height: 100%;
+    color: #bfc9d6;
+    opacity: 0.6;
+    pointer-events: none;
+    font-family: inherit;
+    font-size: 1rem;
+    z-index: 1;
+    white-space: pre;
+    user-select: none;
+    width: 100%;
+    overflow: hidden;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    line-height: normal;
+    box-sizing: border-box;
+}
+/* Input URL de portada y botón en una fila */
+.cover-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+.cover-row input[type="url"] {
+    flex: 1 1 70%;
+    min-width: 0;
+}
+.cover-row button {
+    flex: 0 0 160px;
+    min-width: 120px;
+    padding-left: 0;
+    padding-right: 0;
+    white-space: nowrap;
+}
 .book-card img {
     width: 180px;
     height: 270px;
@@ -306,6 +354,11 @@ form select {
     color: white;
     box-sizing: border-box;
     font-family: 'Lora';
+    margin-bottom: 20px;
+}
+/* Eliminar margen inferior del input de URL dentro de .cover-row para evitar doble espacio */
+.cover-row input[type="url"] {
+    margin-bottom: 0;
 }
 
 .password-wrapper {
