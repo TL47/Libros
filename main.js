@@ -567,7 +567,23 @@ function importFromClipboard() {
             if (parsed.books && parsed.sagas) {
                 if (confirm("¿Quieres sobrescribir tu biblioteca actual con los datos pegados?")) {
                     library = parsed;
+                    // Marcar todos los libros y sagas como dirty para forzar sincronización
+                    if (library.books) library.books.forEach(b => b.dirty = true);
+                    if (library.sagas) {
+                        library.sagas.forEach(s => {
+                            s.dirty = true;
+                            if (s.books) s.books.forEach(b => b.dirty = true);
+                        });
+                    }
                     save();
+                    // Si hay sesión y Supabase activo, sincronizar
+                    if (isUsingSupabase && currentUser) {
+                        syncToSupabase().then(() => {
+                            alert("¡Importación y sincronización con la base de datos completadas!");
+                        }).catch(err => {
+                            alert("Error al sincronizar con Supabase: " + err.message);
+                        });
+                    }
                 }
             } else {
                 alert("El código no parece ser válido.");
