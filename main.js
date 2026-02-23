@@ -1,56 +1,100 @@
-document.getElementById('findCoverOpenLibBtn').onclick = async function() {
-    const title = document.getElementById('title').value.trim();
-    const author = document.getElementById('author').value.trim();
-    const coverOptions = document.getElementById('coverOptions');
-    const coverModal = document.getElementById('coverModal');
-    coverOptions.innerHTML = '';
-    if (!title) {
-        coverOptions.innerHTML = '<span style="color: #c00">Debes introducir un título para buscar portadas.</span>';
+// Autocompletado visual (ghost text) para el título
+const titleInput = document.getElementById('title');
+const titleGhost = document.getElementById('titleGhost');
+const authorInput = document.getElementById('author');
+const authorDatalist = document.getElementById('authorSuggestions');
+
+let lastTitleQuery = '';
+let titleSuggestions = [];
+let ghostActive = false;
+
+titleInput.addEventListener('input', async function(e) {
+    const title = titleInput.value;
+    if (title.length < 3) {
+        titleGhost.textContent = '';
         return;
     }
-    // Llama a Open Library Search API usando un proxy CORS
-    const proxy = 'http://localhost:3000/proxy?url=';
-    const url = `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`;
-    let data = null;
-    coverModal.style.display = 'flex';
-    try {
-        const res = await fetch(proxy + encodeURIComponent(url));
-        if (!res.ok) throw new Error('Error de red o del proxy');
-        data = await res.json();
-    } catch (err) {
-        coverOptions.innerHTML = `<span style=\"color: #c00\">No se pudo conectar con Open Library. Detalle: ${err.message}</span>`;
-        return;
-    }
-    if (data && data.docs && data.docs.length > 0) {
-        let found = false;
-        data.docs.forEach(doc => {
-            if (doc.cover_i) {
-                found = true;
-                const imgUrl = `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
-                const imgElem = document.createElement('img');
-                imgElem.src = imgUrl;
-                imgElem.alt = doc.title;
-                imgElem.style.width = '80px';
-                imgElem.style.height = '120px';
-                imgElem.style.cursor = 'pointer';
-                imgElem.title = 'Elegir esta portada';
-                imgElem.onclick = () => {
-                    const coverInput = document.getElementById('cover');
-                    coverInput.value = imgUrl;
-                    coverModal.style.display = 'none';
-                    coverInput.focus();
-                    coverInput.select();
-                };
-                coverOptions.appendChild(imgElem);
+    if (title !== lastTitleQuery) {
+        lastTitleQuery = title;
+        try {
+            const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=intitle:${encodeURIComponent(title)}&maxResults=10`);
+            const data = await res.json();
+            titleSuggestions = [];
+            const authors = new Set();
+            if (data.items) {
+                data.items.forEach(item => {
+                    if (item.volumeInfo) {
+                        if (item.volumeInfo.title) titleSuggestions.push(item.volumeInfo.title);
+                        if (item.volumeInfo.authors) item.volumeInfo.authors.forEach(a => authors.add(a));
+                    }
+                });
             }
-        });
-        if (!found) {
-            coverOptions.innerHTML = '<span style="color: #c00">No se encontraron portadas en Open Library.</span>';
+            authorDatalist.innerHTML = '';
+            Array.from(authors).forEach(author => {
+                const option = document.createElement('option');
+                option.value = author;
+                authorDatalist.appendChild(option);
+            });
+        } catch (e) {
+            titleSuggestions = [];
+            authorDatalist.innerHTML = '';
         }
-    } else {
-        coverOptions.innerHTML = '<span style=\"color: #c00\">No se encontró el libro en Open Library.</span>';
     }
-};
+    // Buscar la mejor sugerencia que empiece por el texto actual (case-insensitive)
+    const lower = title.toLowerCase();
+    const match = titleSuggestions.find(s => s.toLowerCase().startsWith(lower) && s.length > title.length);
+    if (match) {
+        // Medir el ancho del texto ya escrito para posicionar el ghost
+        const span = document.createElement('span');
+        span.style.visibility = 'hidden';
+        span.style.position = 'absolute';
+        span.style.whiteSpace = 'pre';
+        span.style.fontFamily = getComputedStyle(titleInput).fontFamily;
+        span.style.fontSize = getComputedStyle(titleInput).fontSize;
+        span.style.fontWeight = getComputedStyle(titleInput).fontWeight;
+        span.style.letterSpacing = getComputedStyle(titleInput).letterSpacing;
+        span.textContent = title;
+        document.body.appendChild(span);
+        const offset = span.offsetWidth;
+        document.body.removeChild(span);
+        titleGhost.style.left = (offset + 7) + 'px'; // 7px = input padding - 5px para acercar
+        titleGhost.textContent = match.substring(title.length);
+        titleGhost.style.display = 'flex';
+    } else {
+        titleGhost.textContent = '';
+        titleGhost.style.display = 'none';
+        titleGhost.style.left = '0';
+    }
+});
+
+// Si el usuario pulsa Tab y hay ghost, autocompletar el texto original + ghost
+titleInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Tab' && titleGhost.textContent) {
+        e.preventDefault();
+        titleInput.value = titleInput.value + titleGhost.textContent;
+        titleGhost.textContent = '';
+        // Lanzar evento input para refrescar sugerencias de autor
+        titleInput.dispatchEvent(new Event('input'));
+    }
+});
+// Asignar fecha de lectura automáticamente al seleccionar una valoración de estrellas
+document.getElementById('rating').addEventListener('change', function() {
+    const val = parseInt(this.value);
+    const readDateInput = document.getElementById('readDate');
+    if (val >= 1 && val <= 5) {
+        // Solo para estrellas
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        readDateInput.value = `${yyyy}-${mm}-${dd}`;
+        readDateInput.disabled = true;
+    } else {
+        // Para 'Leyendo' y 'Valoración', permitir edición manual
+        readDateInput.value = '';
+        readDateInput.disabled = false;
+    }
+});
 // Estado para selección múltiple
 let isMultiSelectMode = false;
 let selectedBookIds = [];
@@ -73,7 +117,9 @@ document.getElementById('findCoverBtn').onclick = async function() {
             const img = item.volumeInfo.imageLinks?.thumbnail || item.volumeInfo.imageLinks?.smallThumbnail;
             if (img) {
                 found = true;
-                const imgUrl = img.replace('http:', 'https:');
+                let imgUrl = img.replace('http:', 'https:');
+                // Reemplazar cualquier parámetro zoom=1 por zoom=3 en la URL (aunque esté en medio de otros parámetros)
+                imgUrl = imgUrl.replace(/([&?])zoom=1(?=&|$)/g, '$1zoom=3');
                 const imgElem = document.createElement('img');
                 imgElem.src = imgUrl;
                 imgElem.alt = item.volumeInfo.title;
@@ -120,6 +166,19 @@ document.getElementById('coverModal').addEventListener('click', function(e) {
 // deleteAllBooks, deleteAllSagas, addBook, addSaga, getSagas deben estar en window o importados
 
 let library = JSON.parse(localStorage.getItem('myLibraryStorageV2')) || { books: [], sagas: [] };
+// Mantener listas de IDs eliminados para sincronizar con Supabase
+let deletedBookIds = JSON.parse(localStorage.getItem('deletedBookIds') || '[]');
+let deletedSagaIds = JSON.parse(localStorage.getItem('deletedSagaIds') || '[]');
+// Migración: asegurar que todos los libros y sagas tengan el flag dirty (por defecto false)
+if (library.books) {
+    library.books.forEach(b => { if (b.dirty === undefined) b.dirty = false; });
+}
+if (library.sagas) {
+    library.sagas.forEach(s => {
+        if (s.dirty === undefined) s.dirty = false;
+        if (s.books) s.books.forEach(b => { if (b.dirty === undefined) b.dirty = false; });
+    });
+}
 let currentSagaId = null;
 let currentEditingBookId = null;
 let currentEditingSagaId = null;
@@ -238,6 +297,25 @@ logoutBtn.onclick = async () => {
 
 // Cargar libros desde Supabase
 async function loadBooksFromSupabase() {
+            // Limpiar duplicados en Supabase (por título+autor+sagaId) al cargar
+            try {
+                const allBooks = await getBooks(currentUser.id);
+                const bookGroups = {};
+                for (const b of allBooks) {
+                    const key = (b.title + '|' + b.author + '|' + (b.saga_id || 'null')).toLowerCase();
+                    if (!bookGroups[key]) bookGroups[key] = [];
+                    bookGroups[key].push(b);
+                }
+                for (const key in bookGroups) {
+                    const group = bookGroups[key];
+                    if (group.length > 1) {
+                        group.sort((a, b) => a.id - b.id);
+                        for (let i = 1; i < group.length; i++) {
+                            try { await deleteBook(group[i].id); } catch (e) { console.error('Error borrando duplicado remoto (load):', e); }
+                        }
+                    }
+                }
+            } catch (e) { console.error('Error limpiando duplicados remotos (load):', e); }
     try {
         const booksData = await getBooks(currentUser.id);
         const sagasData = await getSagas(currentUser.id);
@@ -256,13 +334,18 @@ async function loadBooksFromSupabase() {
         library.books = [];
 
         // 3. Clasificar libros: si tiene saga_id va a la saga, si no a library.books
-        //    Siempre ordenados por 'order' y sin duplicados
+        //    Siempre ordenados por 'order' y sin duplicados (por id y por título+autor+sagaId)
         const sagaBooksMap = {};
         for (const saga of library.sagas) {
             sagaBooksMap[saga.id] = [];
         }
         const looseBooksArr = [];
+        // Deduplicar por id y por clave compuesta
+        const seenBookKeys = new Set();
         for (const b of booksData) {
+            const key = (b.title + '|' + b.author + '|' + (b.saga_id || 'null')).toLowerCase();
+            if (seenBookKeys.has(key)) continue;
+            seenBookKeys.add(key);
             const book = {
                 id: b.id,
                 title: b.title,
@@ -354,6 +437,8 @@ const sortable = new Sortable(mainGrid, {
 function save(shouldRender = true) {
     // Guardar en localStorage (backup local)
     localStorage.setItem('myLibraryStorageV2', JSON.stringify(library));
+    localStorage.setItem('deletedBookIds', JSON.stringify(deletedBookIds));
+    localStorage.setItem('deletedSagaIds', JSON.stringify(deletedSagaIds));
     
     // Guardar en Supabase si hay sesión activa
     if (isUsingSupabase && currentUser) {
@@ -366,50 +451,99 @@ function save(shouldRender = true) {
 
 // Sincronizar library con Supabase
 async function syncToSupabase() {
-    if (!currentUser) return;
-    console.log('📤 Sincronizando con Supabase...');
-    try {
-        // 1. Borrar todos los libros y sagas del usuario
-        await Promise.all([
-            deleteAllBooks(currentUser.id),
-            deleteAllSagas(currentUser.id)
-        ]);
-
-            // 2. Subir todas las sagas primero (sin libros), guardando el orden
-            for (let i = 0; i < library.sagas.length; i++) {
-                const saga = library.sagas[i];
-                await addSaga({ name: saga.name, order: i }, currentUser.id);
-        }
-
-        // 3. Obtener las sagas insertadas para mapear IDs
-        const sagasInDb = await getSagas(currentUser.id);
-        const sagaNameToId = {};
-        for (const saga of sagasInDb) {
-            sagaNameToId[saga.name] = saga.id;
-        }
-
-            // 4. Subir solo los libros sueltos (que no están en ninguna saga), guardando el orden
-            for (let i = 0; i < library.books.length; i++) {
-                const book = library.books[i];
-                await addBook({ ...book, sagaId: null, order: i }, currentUser.id);
+                // 0. Limpiar duplicados en Supabase (por título+autor+sagaId)
+                try {
+                    const allBooks = await getBooks(currentUser.id);
+                    const bookGroups = {};
+                    for (const b of allBooks) {
+                        const key = (b.title + '|' + b.author + '|' + (b.saga_id || 'null')).toLowerCase();
+                        if (!bookGroups[key]) bookGroups[key] = [];
+                        bookGroups[key].push(b);
+                    }
+                    for (const key in bookGroups) {
+                        const group = bookGroups[key];
+                        if (group.length > 1) {
+                            // Ordenar por id para dejar el más antiguo
+                            group.sort((a, b) => a.id - b.id);
+                            // Eliminar todos menos el primero
+                            for (let i = 1; i < group.length; i++) {
+                                try { await deleteBook(group[i].id); } catch (e) { console.error('Error borrando duplicado remoto:', e); }
+                            }
+                        }
+                    }
+                } catch (e) { console.error('Error limpiando duplicados remotos:', e); }
+            // Deduplicar antes de subir: solo un libro por título+autor+sagaId
+            function dedupBooksArr(arr) {
+                const seen = new Set();
+                return arr.filter(b => {
+                    const key = (b.title + '|' + b.author + '|' + (b.sagaId || b.saga_id || 'null')).toLowerCase();
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
             }
-
-            // 5. Subir los libros de cada saga con su sagaId y orden
+            library.books = dedupBooksArr(library.books);
             for (const saga of library.sagas) {
-                const sagaId = sagaNameToId[saga.name];
-                for (let i = 0; i < saga.books.length; i++) {
-                    const book = saga.books[i];
-                    await addBook({ ...book, sagaId, order: i }, currentUser.id);
-                }
-        }
-
-        // 5. Subir los libros de cada saga con su sagaId
-        for (const saga of library.sagas) {
-            const sagaId = sagaNameToId[saga.name];
-            for (const book of saga.books) {
-                await addBook({ ...book, sagaId }, currentUser.id);
+                saga.books = dedupBooksArr(saga.books);
+            }
+        // 0. Eliminar en Supabase los libros y sagas borrados localmente
+        for (const bookId of deletedBookIds) {
+            if (bookId && String(bookId).length > 8) {
+                try { await deleteBook(bookId); } catch (e) { console.error('Error borrando libro remoto:', e); }
             }
         }
+        for (const sagaId of deletedSagaIds) {
+            if (sagaId && String(sagaId).length > 8) {
+                try { await deleteSaga(sagaId); } catch (e) { console.error('Error borrando saga remota:', e); }
+            }
+        }
+        deletedBookIds = [];
+        deletedSagaIds = [];
+    if (!currentUser) return;
+    console.log('📤 Sincronizando solo entidades sucias con Supabase...');
+    try {
+        // 1. Sincronizar sagas sucias (solo nombre y orden)
+        for (let i = 0; i < library.sagas.length; i++) {
+            const saga = library.sagas[i];
+            if (saga.dirty) {
+                if (saga.id && String(saga.id).length > 8) {
+                    await updateSaga(saga.id, { name: saga.name, order: i });
+                } else {
+                    const [newSaga] = await addSaga({ name: saga.name, order: i }, currentUser.id);
+                    saga.id = newSaga.id;
+                }
+                saga.dirty = false;
+            }
+        }
+        // 2. Sincronizar libros sueltos sucios
+        for (let i = 0; i < library.books.length; i++) {
+            const book = library.books[i];
+            if (book.dirty) {
+                if (book.id && String(book.id).length > 8) {
+                    await updateBook(book.id, { ...book, sagaId: null, order: i });
+                } else {
+                    const [newBook] = await addBook({ ...book, sagaId: null, order: i }, currentUser.id);
+                    book.id = newBook.id;
+                }
+                book.dirty = false;
+            }
+        }
+        // 3. Sincronizar libros de sagas sucios
+        for (const saga of library.sagas) {
+            for (let i = 0; i < saga.books.length; i++) {
+                const book = saga.books[i];
+                if (book.dirty) {
+                    if (book.id && String(book.id).length > 8) {
+                        await updateBook(book.id, { ...book, sagaId: saga.id, order: i });
+                    } else {
+                        const [newBook] = await addBook({ ...book, sagaId: saga.id, order: i }, currentUser.id);
+                        book.id = newBook.id;
+                    }
+                    book.dirty = false;
+                }
+            }
+        }
+        save(false); // Guardar para limpiar flags dirty
     } catch (err) {
         console.error('Error sincronizando con Supabase:', err);
     }
@@ -597,60 +731,8 @@ function createBookCard(book, isInsideSaga) {
         </div>
     `;
     // Aura visual si está seleccionado
-    if (isMultiSelectMode && selectedBookIds.includes(book.id)) {
-        div.classList.add('book-selected-aura');
-    } else {
-        div.classList.remove('book-selected-aura');
-    }
-// ========================
-// SELECCIÓN MÚLTIPLE DE LIBROS
-// ========================
-const multiSelectBtn = document.getElementById('multiSelectBtn');
-const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
-
-multiSelectBtn.onclick = () => {
-    isMultiSelectMode = !isMultiSelectMode;
-    selectedBookIds = [];
-    deleteSelectedBtn.style.display = isMultiSelectMode ? 'inline-block' : 'none';
-    multiSelectBtn.innerText = isMultiSelectMode ? 'Cancelar Selección' : 'Seleccionar Libros';
-    render(searchInput.value);
-};
-
-deleteSelectedBtn.onclick = () => {
-    if (selectedBookIds.length === 0) return alert('Selecciona al menos un libro.');
-    if (!confirm('¿Borrar los libros seleccionados?')) return;
-    // Borrar de libros sueltos
-    library.books = library.books.filter(b => !selectedBookIds.includes(b.id));
-    // Borrar de sagas
-    for (const saga of library.sagas) {
-        saga.books = saga.books.filter(b => !selectedBookIds.includes(b.id));
-    }
-    selectedBookIds = [];
-    save();
-    render(searchInput.value);
-};
-
-// Delegación de eventos para selección de libros por click
-mainGrid.addEventListener('click', (e) => {
-    // Buscar la tarjeta de libro más cercana
-    const bookCard = e.target.closest('.book-card');
-    if (!bookCard) return;
-    // Si está en modo selección múltiple y no se hace click en un botón de acción
-    if (isMultiSelectMode && !e.target.closest('.card-actions')) {
-        const bookId = parseInt(bookCard.dataset.id);
-        if (selectedBookIds.includes(bookId)) {
-            selectedBookIds = selectedBookIds.filter(id => id !== bookId);
-        } else {
-            selectedBookIds.push(bookId);
-        }
-        // Evitar que Sortable arrastre en modo selección múltiple
-        e.preventDefault();
-        e.stopPropagation();
-        render(searchInput.value);
-        return;
-    }
-    // Si no está en modo selección múltiple, dejar el comportamiento normal (drag, abrir saga, etc)
-});
+    // ...eliminado selección múltiple...
+// ...eliminado selección múltiple...
 
     // PREVENCIÓN DE XSS: Insertar la opinión de forma segura usando textContent
     if (book.opinion) {
@@ -738,15 +820,15 @@ document.getElementById('bookForm').onsubmit = (e) => {
         if (currentSagaId) {
             let saga = library.sagas.find(s => s.id === currentSagaId);
             let idx = saga.books.findIndex(b => b.id == id);
-            saga.books[idx] = bookData;
+            saga.books[idx] = { ...bookData, dirty: true };
         } else {
             let idx = library.books.findIndex(b => b.id == id);
-            library.books[idx] = bookData;
+            library.books[idx] = { ...bookData, dirty: true };
         }
     } else {
         // Nuevo
-        if (currentSagaId) library.sagas.find(s => s.id === currentSagaId).books.push(bookData);
-        else library.books.push(bookData);
+        if (currentSagaId) library.sagas.find(s => s.id === currentSagaId).books.push({ ...bookData, dirty: true });
+        else library.books.push({ ...bookData, dirty: true });
     }
     save();
     closeModals();
@@ -759,42 +841,10 @@ document.getElementById('sagaForm').onsubmit = (e) => {
     const name = document.getElementById('sagaName').value;
 
     if (id) {
-                // Añadir libros a sagas, ordenados por 'order'
-                const sagaBooks = booksData.filter(b => b.saga_id);
-                const looseBooks = booksData.filter(b => !b.saga_id);
-
-                for (const saga of library.sagas) {
-                    const booksForSaga = sagaBooks
-                        .filter(b => b.saga_id === saga.id)
-                        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-                    saga.books = booksForSaga.map(b => ({
-                        id: b.id,
-                        title: b.title,
-                        author: b.author,
-                        cover: b.cover,
-                        rating: b.rating,
-                        readDate: b.read_date,
-                        opinion: b.opinion,
-                        isPending: b.is_pending,
-                    }));
-                }
-
-                // Añadir libros sueltos, ordenados por 'order'
-                library.books = looseBooks
-                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-                    .map(b => ({
-                        id: b.id,
-                        title: b.title,
-                        author: b.author,
-                        cover: b.cover,
-                        rating: b.rating,
-                        readDate: b.read_date,
-                        opinion: b.opinion,
-                        isPending: b.is_pending,
-                    }));
         library.sagas.find(s => s.id == id).name = name;
+        library.sagas.find(s => s.id == id).dirty = true;
     } else {
-        library.sagas.push({ id: Date.now(), name: name, books: [] });
+        library.sagas.push({ id: Date.now(), name: name, books: [], dirty: true });
     }
     save();
     closeModals();
@@ -807,17 +857,44 @@ document.getElementById('sagaForm').onsubmit = (e) => {
 function deleteBook(e, id, isInsideSaga) {
     e.stopPropagation();
     if (!confirm("¿Borrar este libro?")) return;
+    let bookIdToDelete = null;
     if (isInsideSaga) {
         const saga = library.sagas.find(s => s.id === currentSagaId);
-        saga.books = saga.books.filter(b => b.id !== id);
-    } else library.books = library.books.filter(b => b.id !== id);
+        const idx = saga.books.findIndex(b => b.id === id);
+        if (idx !== -1) {
+            bookIdToDelete = saga.books[idx].id;
+            saga.books.splice(idx, 1);
+        }
+    } else {
+        const idx = library.books.findIndex(b => b.id === id);
+        if (idx !== -1) {
+            bookIdToDelete = library.books[idx].id;
+            library.books.splice(idx, 1);
+        }
+    }
+    if (bookIdToDelete && String(bookIdToDelete).length > 8) {
+        deletedBookIds.push(bookIdToDelete);
+    }
     save();
 }
 
 function deleteSaga(e, id) {
     e.stopPropagation();
     if (!confirm("¿Borrar saga y todos sus libros?")) return;
-    library.sagas = library.sagas.filter(s => s.id !== id);
+    const idx = library.sagas.findIndex(s => s.id === id);
+    if (idx !== -1) {
+        const sagaIdToDelete = library.sagas[idx].id;
+        // También eliminar todos los libros de la saga
+        for (const book of library.sagas[idx].books) {
+            if (book.id && String(book.id).length > 8) {
+                deletedBookIds.push(book.id);
+            }
+        }
+        if (sagaIdToDelete && String(sagaIdToDelete).length > 8) {
+            deletedSagaIds.push(sagaIdToDelete);
+        }
+        library.sagas.splice(idx, 1);
+    }
     save();
 }
 
@@ -830,9 +907,11 @@ function markAsPending(e, id, isInsideSaga) {
         const saga = library.sagas.find(s => s.id === currentSagaId);
         const book = saga.books.find(b => b.id === id);
         book.isPending = true;
+        book.dirty = true;
     } else {
         const book = library.books.find(b => b.id === id);
         book.isPending = true;
+        book.dirty = true;
     }
     save();
 }
@@ -843,9 +922,11 @@ function removePending(e, id, isInsideSaga) {
         const saga = library.sagas.find(s => s.id === currentSagaId);
         const book = saga.books.find(b => b.id === id);
         book.isPending = false;
+        book.dirty = true;
     } else {
         const book = library.books.find(b => b.id === id);
         book.isPending = false;
+        book.dirty = true;
     }
     save();
 }

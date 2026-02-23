@@ -13,9 +13,19 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0"></script>
     <link rel="stylesheet" href="style.css">
     <link rel="shortcut icon" href="logo_biblioteca.png" type="image/x-icon">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#c5a059">
 </head>
 
 <body>
+
+        <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('service-worker.js');
+            });
+        }
+        </script>
 
     <!-- MODAL DE AUTENTICACIÓN -->
     <div id="authModal" class="modal" style="display: flex;">
@@ -51,8 +61,6 @@
                 <input type="text" id="searchInput" placeholder="Buscar título o autor...">
                 <button id="addBookBtn" class="btn btn-main">+ AÑADIR LIBRO</button>
                 <button id="addSagaBtn" class="btn btn-saga">+ CREAR SAGA</button>
-                <button id="multiSelectBtn" class="btn btn-saga" style="background: #c5a059; color: #1a2a44;">Seleccionar Libros</button>
-                <button id="deleteSelectedBtn" class="btn btn-main" style="display:none; background: #ff6b6b; color: white;">Borrar Seleccionados</button>
             </div>
             <div class="filter-controls" id="filterControls">
                 <button class="filter-btn active" data-filter="all">📚 TODOS</button>
@@ -78,11 +86,16 @@
             <h2 id="bookModalTitle" style="font-family: 'Oswald'; color: var(--st-pats-gold)">AÑADIR LIBRO</h2>
             <form id="bookForm">
                 <input type="hidden" id="editBookId">
-                <input type="text" id="title" placeholder="Título" required>
-                <input type="text" id="author" placeholder="Autor/a" required>
-                <input type="url" id="cover" placeholder="URL de la Imagen" required>
-                                <button type="button" id="findCoverBtn" style="margin-bottom: 10px;">Buscar portada</button>
-                                <button type="button" id="findCoverOpenLibBtn" style="margin-bottom: 10px; margin-left: 10px;">Buscar en Open Library</button>
+                <div class="autocomplete-title-wrapper" style="position:relative;">
+                    <input type="text" id="title" placeholder="Título" autocomplete="off" required>
+                    <span id="titleGhost" class="ghost-autocomplete"></span>
+                </div>
+                <input type="text" id="author" placeholder="Autor/a" list="authorSuggestions" autocomplete="off" required>
+                <datalist id="authorSuggestions"></datalist>
+                <div class="cover-row">
+                    <input type="url" id="cover" placeholder="URL de la Imagen" required>
+                    <button type="button" id="findCoverBtn" class="btn btn-main">Buscar portada</button>
+                </div>
                                 <!-- Modal para elegir portada sugerida -->
                                 <div id="coverModal" class="modal" style="display:none; align-items:center; justify-content:center;">
                                     <div class="modal-content" style="max-width: 600px;">

@@ -1,3 +1,130 @@
+/* ===================== RESPONSIVE DESIGN ===================== */
+@media (max-width: 900px) {
+    .container {
+        max-width: 98vw;
+        padding: 0 8px;
+    }
+    .grid {
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 18px;
+    }
+    .modal-content {
+        max-width: 98vw;
+        padding: 18px;
+    }
+}
+
+@media (max-width: 600px) {
+    header {
+        padding: 24px 0;
+        font-size: 1.2rem;
+    }
+    h1 {
+        font-size: 2rem;
+    }
+    .container {
+        padding: 0 2px;
+    }
+    .grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    .book-card {
+        max-width: 95vw;
+        min-width: 0;
+        padding: 6px;
+    }
+    .book-card img {
+        height: 120px;
+        min-width: 70px;
+        max-width: 90vw;
+    }
+    .modal-content {
+        padding: 10px;
+        max-width: 99vw;
+    }
+    .cover-row {
+        flex-direction: column;
+        gap: 6px;
+    }
+    .cover-row button {
+        width: 100%;
+        min-width: unset;
+    }
+    input, select, textarea, button {
+        font-size: 1rem;
+    }
+}
+
+@media (min-width: 1200px) {
+    .book-card {
+        max-width: 95vw;
+        min-width: 0;
+        padding: 3px;
+        font-size: 0.85rem;
+    }
+    .book-card img {
+        height: 80px;
+        min-width: 48px;
+        max-width: 60vw;
+        border-radius: 5px;
+    }
+    .book-title {
+        font-size: 1rem;
+        margin: 2px 0 0 0;
+    }
+    .book-author {
+        font-size: 0.8rem;
+        margin-bottom: 4px;
+    }
+    .card-actions button {
+        font-size: 0.8rem;
+        padding: 4px 8px;
+    }
+}
+#title {
+    position: relative;
+    background: transparent;
+    z-index: 2;
+}
+#titleGhost {
+    position: absolute;
+    left: 0;
+    top: -10px;
+    height: 100%;
+    color: #bfc9d6;
+    opacity: 0.6;
+    pointer-events: none;
+    font-family: inherit;
+    font-size: 1rem;
+    z-index: 1;
+    white-space: pre;
+    user-select: none;
+    width: 100%;
+    overflow: hidden;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    line-height: normal;
+    box-sizing: border-box;
+}
+/* Input URL de portada y botón en una fila */
+.cover-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+.cover-row input[type="url"] {
+    flex: 1 1 70%;
+    min-width: 0;
+}
+.cover-row button {
+    flex: 0 0 160px;
+    min-width: 120px;
+    padding-left: 0;
+    padding-right: 0;
+    white-space: nowrap;
+}
 .book-card img {
     width: 180px;
     height: 270px;
@@ -306,6 +433,11 @@ form select {
     color: white;
     box-sizing: border-box;
     font-family: 'Lora';
+    margin-bottom: 20px;
+}
+/* Eliminar margen inferior del input de URL dentro de .cover-row para evitar doble espacio */
+.cover-row input[type="url"] {
+    margin-bottom: 0;
 }
 
 .password-wrapper {
