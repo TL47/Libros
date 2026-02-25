@@ -644,7 +644,7 @@ function render(searchText = '') {
 
         library.sagas
             .filter(s => s.name.toLowerCase().includes(search))
-            .filter(s => s.books.some(b => shouldShowBook(b)))
+            .filter(s => (Array.isArray(s.books) && s.books.length === 0) || (s.books && s.books.some(b => shouldShowBook(b))))
             .forEach(saga => {
                 const card = document.createElement('div');
                 card.className = 'saga-card';

@@ -143,13 +143,15 @@ async function updateBook(bookId, bookData) {
 }
 
 async function deleteBook(bookId) {
-    const { error } = await supabase
+    const { data, error } = await supabase
         .from('books')
         .delete()
         .eq('id', bookId);
-    
+    console.log('[SUPABASE] deleteBook:', { bookId, data, error });
     if (error) throw error;
+    return data;
 }
+window.supaDeleteBook = deleteBook;
 
 // ========================
 // FUNCIONES DE SAGAS
@@ -194,10 +196,12 @@ async function updateSaga(sagaId, sagaData) {
 }
 
 async function deleteSaga(sagaId) {
-    const { error } = await supabase
+    const { data, error } = await supabase
         .from('sagas')
         .delete()
         .eq('id', sagaId);
-    
+    console.log('[SUPABASE] deleteSaga:', { sagaId, data, error });
     if (error) throw error;
+    return data;
 }
+window.supaDeleteSaga = deleteSaga;

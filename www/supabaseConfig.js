@@ -219,5 +219,8 @@ window.getSagas = getSagas;
 window.addSaga = addSaga;
 window.updateSaga = updateSaga;
 window.deleteSaga = deleteSaga;
+// También exponer con nombres únicos para evitar colisiones con funciones locales
+window.supaDeleteBook = deleteBook;
+window.supaDeleteSaga = deleteSaga;
 window.deleteAllBooks = deleteAllBooks;
 window.deleteAllSagas = deleteAllSagas;

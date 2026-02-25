@@ -187,13 +187,30 @@ document.getElementById('coverModal').addEventListener('click', function(e) {
 
 // deleteAllBooks, deleteAllSagas, addBook, addSaga, getSagas deben estar en window o importados
 
-let library = JSON.parse(localStorage.getItem('myLibraryStorageV2')) || { books: [], sagas: [] };
+let library = { books: [], sagas: [] };
+
+async function loadLibraryFromSupabase() {
+    if (!currentUser) return;
+    try {
+        const books = await getBooks(currentUser.id);
+        const sagas = await getSagas(currentUser.id);
+        // Relacionar libros con sagas
+        sagas.forEach(saga => {
+            saga.books = books.filter(b => b.saga_id === saga.id);
+        });
+        library.books = books.filter(b => !b.saga_id);
+        library.sagas = sagas;
+        render();
+    } catch (e) {
+        console.error('Error cargando datos de Supabase:', e);
+    }
+}
+
+// Llamar a la función de carga al iniciar
+window.addEventListener('DOMContentLoaded', loadLibraryFromSupabase);
 // Mantener listas de IDs eliminados para sincronizar con Supabase
-let deletedBookIds = JSON.parse(localStorage.getItem('deletedBookIds') || '[]');
-let deletedSagaIds = JSON.parse(localStorage.getItem('deletedSagaIds') || '[]');
 // Flag de procedencia: los objetos cargados desde Supabase llevarán fromSupabase = true.
 // Además, guardamos "claves" de libros borrados por título+autor+saga para limpiar cualquier copia remota.
-let deletedBookKeys = JSON.parse(localStorage.getItem('deletedBookKeys') || '[]');
 
 // Función helper para generar siempre la misma clave de libro (normalizada)
 function makeBookKey(title, author, sagaId) {
@@ -351,7 +368,7 @@ async function loadBooksFromSupabase() {
                 // Mantener solo el más antiguo y borrar el resto
                 group.sort((a, b) => a.id - b.id);
                 for (let i = 1; i < group.length; i++) {
-                    try { await deleteBook(group[i].id); } catch (e) { console.error('Error borrando duplicado remoto (load):', e); }
+                    try { await window.supaDeleteBook(group[i].id); } catch (e) { console.error('Error borrando duplicado remoto (load):', e); }
                 }
             }
         }
@@ -360,15 +377,7 @@ async function loadBooksFromSupabase() {
         let booksData = await getBooks(currentUser.id);
         const sagasData = await getSagas(currentUser.id);
 
-        // Filtrar libros que el usuario ha marcado como borrados por clave (título+autor+saga)
-        // y también los que estén en la lista BLOCKED_BOOK_KEYS
-        if (deletedBookKeys.length > 0 || BLOCKED_BOOK_KEYS.length > 0) {
-            const deletedKeysSet = new Set([...deletedBookKeys, ...BLOCKED_BOOK_KEYS]);
-            booksData = booksData.filter(b => {
-                const key = makeBookKey(b.title, b.author, b.saga_id);
-                return !deletedKeysSet.has(key);
-            });
-        }
+        // ...existing code...
         
         // 1. Ordenar y crear sagas
         library.sagas = sagasData
@@ -489,18 +498,12 @@ const sortable = new Sortable(mainGrid, {
 function save(shouldRender = true) {
     // Guardar en localStorage (backup local)
     localStorage.setItem('myLibraryStorageV2', JSON.stringify(library));
-    localStorage.setItem('deletedBookIds', JSON.stringify(deletedBookIds));
-    localStorage.setItem('deletedSagaIds', JSON.stringify(deletedSagaIds));
-    localStorage.setItem('deletedBookKeys', JSON.stringify(deletedBookKeys));
 
     // Solo sincronizar si hay cambios sucios o eliminaciones pendientes
     let hasDirty = false;
     if (isUsingSupabase && currentUser) {
-        // Revisar si hay libros o sagas dirty o eliminaciones pendientes
-        hasDirty = deletedBookIds.length > 0 || deletedSagaIds.length > 0;
-        if (!hasDirty) {
-            for (const b of library.books) if (b.dirty) { hasDirty = true; break; }
-        }
+        // Revisar si hay libros o sagas dirty
+        for (const b of library.books) if (b.dirty) { hasDirty = true; break; }
         if (!hasDirty) {
             for (const s of library.sagas) {
                 if (s.dirty) { hasDirty = true; break; }
@@ -534,22 +537,11 @@ async function syncToSupabase() {
             if (group.length > 1) {
                 group.sort((a, b) => a.id - b.id);
                 for (let i = 1; i < group.length; i++) {
-                    try { await deleteBook(group[i].id); } catch (e) { console.error('Error borrando duplicado remoto:', e); }
+                    try { await window.supaDeleteBook(group[i].id); } catch (e) { console.error('Error borrando duplicado remoto:', e); }
                 }
             }
         }
 
-        // Eliminar por "clave" lógica (título+autor+saga) cualquier libro remoto
-        // marcado como borrado o que esté en la lista BLOCKED_BOOK_KEYS
-        if (deletedBookKeys.length > 0 || BLOCKED_BOOK_KEYS.length > 0) {
-            const deletedKeysSet = new Set([...deletedBookKeys, ...BLOCKED_BOOK_KEYS]);
-            for (const b of allBooks) {
-                const key = makeBookKey(b.title, b.author, b.saga_id);
-                if (deletedKeysSet.has(key)) {
-                    try { await deleteBook(b.id); } catch (e) { console.error('Error borrando libro por clave:', e); }
-                }
-            }
-        }
     } catch (e) { console.error('Error limpiando duplicados remotos:', e); }
             // Deduplicar antes de subir: solo un libro por título+autor+sagaId
             function dedupBooksArr(arr) {
@@ -565,16 +557,7 @@ async function syncToSupabase() {
             for (const saga of library.sagas) {
                 saga.books = dedupBooksArr(saga.books);
             }
-        // 0. Eliminar en Supabase los libros y sagas borrados localmente
-        for (const bookId of deletedBookIds) {
-            try { await deleteBook(bookId); } catch (e) { console.error('Error borrando libro remoto:', e); }
-        }
-        for (const sagaId of deletedSagaIds) {
-            try { await deleteSaga(sagaId); } catch (e) { console.error('Error borrando saga remota:', e); }
-        }
-        deletedBookIds = [];
-        deletedSagaIds = [];
-        deletedBookKeys = [];
+        // (No hay listas locales de eliminados; las eliminaciones se ejecutan inmediatamente)
     if (!currentUser) return;
     console.log('📤 Sincronizando solo entidades sucias con Supabase...');
     try {
@@ -822,7 +805,7 @@ function render(searchText = '') {
 
         library.sagas
             .filter(s => s.name.toLowerCase().includes(search))
-            .filter(s => s.books.some(b => shouldShowBook(b)))
+            .filter(s => (Array.isArray(s.books) && s.books.length === 0) || (s.books && s.books.some(b => shouldShowBook(b))))
             .forEach(saga => {
                 const card = document.createElement('div');
                 card.className = 'saga-card';
@@ -932,7 +915,7 @@ function createBookCard(book, isInsideSaga) {
             <div id=\"opinion-${book.id}\"></div>
             <div class=\"card-actions\"> 
                 <button class=\"action-btn edit-btn\" onclick=\"openEditBook(event, ${book.id}, ${isInsideSaga})\">Editar</button>
-                <button class=\"action-btn delete-btn\" onclick=\"deleteBook(event, ${book.id}, ${isInsideSaga})\">Borrar</button>
+                <button class=\"action-btn delete-btn\" onclick=\"this.remove();deleteBook(event, ${book.id}, ${isInsideSaga})\">Borrar</button>
             </div>
         </div>
     `;
@@ -1060,58 +1043,115 @@ document.getElementById('sagaForm').onsubmit = (e) => {
 // ========================
 // FUNCIONES DE BORRADO
 // ========================
-function deleteBook(e, id, isInsideSaga) {
-    e.stopPropagation();
+async function deleteBook(e, id, isInsideSaga) {
+    if (e && typeof e.stopPropagation === 'function') {
+        e.stopPropagation();
+    }
+    if (typeof id !== 'number' || id <= 0) {
+        console.warn('[BORRADO] ID de libro inválido:', id);
+        return;
+    }
     if (!confirm("¿Borrar este libro?")) return;
+    console.log('[BORRADO] deleteBook llamado con id:', id, 'isInsideSaga:', isInsideSaga);
     let bookIdToDelete = null;
-    let bookKeyToDelete = null;
+    let idx = -1;
+    let saga = null;
     if (isInsideSaga) {
-        const saga = library.sagas.find(s => s.id === currentSagaId);
-        const idx = saga.books.findIndex(b => b.id === id);
-        if (idx !== -1) {
-            const book = saga.books[idx];
-            bookIdToDelete = book.id;
-            bookKeyToDelete = makeBookKey(book.title, book.author, saga.id);
-            saga.books.splice(idx, 1);
+        saga = library.sagas.find(s => s.id === currentSagaId);
+        idx = saga ? saga.books.findIndex(b => b.id === id) : -1;
+        console.log('[BORRADO] Saga encontrada:', saga, 'Índice libro:', idx);
+        if (idx === -1) {
+            console.warn('[BORRADO] Libro no encontrado en saga');
+            return;
+        }
+        bookIdToDelete = saga.books[idx].id;
+    } else {
+        idx = library.books.findIndex(b => b.id === id);
+        console.log('[BORRADO] Índice libro fuera de saga:', idx);
+        if (idx === -1) {
+            console.warn('[BORRADO] Libro no encontrado en library');
+            return;
+        }
+        bookIdToDelete = library.books[idx].id;
+    }
+    if (typeof bookIdToDelete === 'number' && bookIdToDelete > 0) {
+        console.log('[BORRADO] Enviando petición a Supabase para borrar libro:', bookIdToDelete);
+        if (typeof window.supaDeleteBook === 'function') {
+            try {
+                await window.supaDeleteBook(bookIdToDelete);
+                console.log('[BORRADO] Libro borrado en Supabase:', bookIdToDelete);
+                // Solo eliminar localmente si el borrado remoto fue exitoso
+                if (isInsideSaga && saga && idx !== -1) {
+                    saga.books.splice(idx, 1);
+                    console.log('[BORRADO] Libro borrado de saga:', bookIdToDelete);
+                } else if (!isInsideSaga && idx !== -1) {
+                    library.books.splice(idx, 1);
+                    console.log('[BORRADO] Libro borrado de library:', bookIdToDelete);
+                }
+                save();
+            } catch (e) {
+                console.error('[BORRADO] Error borrando libro remoto:', e);
+                alert('Error borrando libro en base de datos: ' + (e.message || e));
+            }
+        } else {
+            console.error('[BORRADO] window.supaDeleteBook no es una función');
         }
     } else {
-        const idx = library.books.findIndex(b => b.id === id);
-        if (idx !== -1) {
-            const book = library.books[idx];
-            bookIdToDelete = book.id;
-            bookKeyToDelete = makeBookKey(book.title, book.author, null);
-            library.books.splice(idx, 1);
-        }
+        console.warn('[BORRADO] No se encontró bookIdToDelete válido para borrar en Supabase');
     }
-    if (bookIdToDelete) {
-        deletedBookIds.push(bookIdToDelete);
-    }
-    if (bookKeyToDelete) {
-        deletedBookKeys.push(bookKeyToDelete);
-    }
-    save();
 }
 
-function deleteSaga(e, id) {
-    e.stopPropagation();
+async function deleteSaga(e, id) {
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+    console.log('[BORRADO] deleteSaga llamado con id:', id);
     if (!confirm("¿Borrar saga y todos sus libros?")) return;
     const idx = library.sagas.findIndex(s => s.id === id);
-    if (idx !== -1) {
-        const saga = library.sagas[idx];
-        const sagaIdToDelete = saga.id;
-        // También eliminar todos los libros de la saga
-        for (const book of saga.books) {
-            if (book.id) {
-                deletedBookIds.push(book.id);
-            }
-            const key = makeBookKey(book.title, book.author, saga.id);
-            deletedBookKeys.push(key);
-        }
-        if (sagaIdToDelete) {
-            deletedSagaIds.push(sagaIdToDelete);
-        }
-        library.sagas.splice(idx, 1);
+    console.log('[BORRADO] Índice saga:', idx);
+    if (idx === -1) {
+        console.warn('[BORRADO] No se encontró saga para borrar en Supabase');
+        return;
     }
+
+    const saga = library.sagas[idx];
+    const sagaIdToDelete = saga.id;
+
+    // Eliminar todos los libros de la saga en Supabase (secuencialmente para manejar errores y logs)
+    if (Array.isArray(saga.books)) {
+        for (const book of saga.books) {
+            if (book && book.id) {
+                console.log('[BORRADO] Enviando petición a Supabase para borrar libro de saga:', book.id);
+                if (typeof window.supaDeleteBook === 'function') {
+                    try {
+                        await window.supaDeleteBook(book.id);
+                        console.log('[BORRADO] Libro de saga borrado en Supabase:', book.id);
+                    } catch (err) {
+                        console.error('[BORRADO] Error borrando libro remoto:', err);
+                        alert('Error borrando libro de saga en base de datos: ' + (err.message || err));
+                    }
+                } else {
+                    console.error('[BORRADO] window.supaDeleteBook no es una función');
+                }
+            }
+        }
+    }
+
+    // Eliminar la saga en Supabase
+    if (sagaIdToDelete) {
+        console.log('[BORRADO] Enviando petición a Supabase para borrar saga:', sagaIdToDelete);
+        if (typeof window.supaDeleteSaga === 'function') {
+            try {
+                await window.supaDeleteSaga(sagaIdToDelete);
+                console.log('[BORRADO] Saga borrada en Supabase:', sagaIdToDelete);
+            } catch (err) {
+                console.error('[BORRADO] Error borrando saga remota:', err);
+                alert('Error borrando saga en base de datos: ' + (err.message || err));
+            }
+        } else {
+            console.error('[BORRADO] window.supaDeleteSaga no es una función');
+        }
+    }
+
+    library.sagas.splice(idx, 1);
     save();
 }
 
