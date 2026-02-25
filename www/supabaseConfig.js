@@ -193,6 +193,7 @@ async function updateSaga(sagaId, sagaData) {
     return data;
 }
 
+
 async function deleteSaga(sagaId) {
     const { error } = await supabase
         .from('sagas')
@@ -201,3 +202,25 @@ async function deleteSaga(sagaId) {
     
     if (error) throw error;
 }
+
+// ========================
+// EXPORTAR FUNCIONES AL WINDOW PARA USO GLOBAL
+// ========================
+window.signUp = signUp;
+window.signIn = signIn;
+window.signOut = signOut;
+window.saveSessionToCache = saveSessionToCache;
+window.getSession = getSession;
+window.getBooks = getBooks;
+window.addBook = addBook;
+window.updateBook = updateBook;
+window.deleteBook = deleteBook;
+window.getSagas = getSagas;
+window.addSaga = addSaga;
+window.updateSaga = updateSaga;
+window.deleteSaga = deleteSaga;
+// También exponer con nombres únicos para evitar colisiones con funciones locales
+window.supaDeleteBook = deleteBook;
+window.supaDeleteSaga = deleteSaga;
+window.deleteAllBooks = deleteAllBooks;
+window.deleteAllSagas = deleteAllSagas;

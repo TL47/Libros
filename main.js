@@ -1,69 +1,82 @@
-// Autocompletado visual (ghost text) para el título
+
+
+// Autocompletado de título solo al pulsar el botón "Buscar títulos"
 const titleInput = document.getElementById('title');
-const titleGhost = document.getElementById('titleGhost');
 const authorInput = document.getElementById('author');
 const authorDatalist = document.getElementById('authorSuggestions');
 
-let lastTitleQuery = '';
-let titleSuggestions = [];
-let ghostActive = false;
+const findTitleBtn = document.getElementById('findTitleBtn');
+const titleDropdown = document.getElementById('titleDropdown');
 
-titleInput.addEventListener('input', async function(e) {
+findTitleBtn.onclick = async function() {
     const title = titleInput.value;
+    titleDropdown.innerHTML = '';
+    titleDropdown.style.display = 'none';
     if (title.length < 3) {
-        titleGhost.textContent = '';
+        alert('Escribe al menos 3 letras para buscar.');
         return;
     }
-    if (title !== lastTitleQuery) {
-        lastTitleQuery = title;
-        try {
-            const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=intitle:${encodeURIComponent(title)}&maxResults=10`);
-            const data = await res.json();
-            titleSuggestions = [];
-            const authors = new Set();
-            if (data.items) {
-                data.items.forEach(item => {
-                    if (item.volumeInfo) {
-                        if (item.volumeInfo.title) titleSuggestions.push(item.volumeInfo.title);
-                        if (item.volumeInfo.authors) item.volumeInfo.authors.forEach(a => authors.add(a));
-                    }
-                });
-            }
-            authorDatalist.innerHTML = '';
-            Array.from(authors).forEach(author => {
-                const option = document.createElement('option');
-                option.value = author;
-                authorDatalist.appendChild(option);
+    const apiKey = 'AIzaSyBW_Ty8_piPXRzab2UOvwyk5G3Pimq73g0';
+    try {
+        const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=intitle:${encodeURIComponent(title)}&maxResults=10&langRestrict=es&key=${apiKey}`);
+        const data = await res.json();
+        let titleSuggestions = [];
+        const authors = new Set();
+        if (data.items) {
+            data.items.forEach(item => {
+                if (item.volumeInfo) {
+                    if (item.volumeInfo.title) titleSuggestions.push(item.volumeInfo.title);
+                    if (item.volumeInfo.authors) item.volumeInfo.authors.forEach(a => authors.add(a));
+                }
             });
-        } catch (e) {
-            titleSuggestions = [];
-            authorDatalist.innerHTML = '';
         }
+        // Mostrar sugerencias de títulos en desplegable
+        if (titleSuggestions.length > 0) {
+            titleDropdown.innerHTML = '';
+            titleSuggestions.forEach(suggestion => {
+                const li = document.createElement('li');
+                li.textContent = suggestion;
+                li.style.padding = '10px 16px';
+                li.style.cursor = 'pointer';
+                li.style.background = 'var(--cloud-grey, #f7f7f7)';
+                li.style.color = 'var(--dark-brown, #3e2c18)';
+                li.style.fontFamily = "'Oswald', 'Lora', sans-serif";
+                li.style.fontSize = '1rem';
+                li.style.borderBottom = '1px solid #e0d3b8';
+                li.onmouseenter = () => {
+                    li.style.background = 'var(--st-pats-gold, #c5a059)';
+                    li.style.color = '#fff';
+                };
+                li.onmouseleave = () => {
+                    li.style.background = 'var(--cloud-grey, #f7f7f7)';
+                    li.style.color = 'var(--dark-brown, #3e2c18)';
+                };
+                li.onclick = () => {
+                    titleInput.value = suggestion;
+                    titleDropdown.style.display = 'none';
+                };
+                titleDropdown.appendChild(li);
+            });
+            titleDropdown.style.display = 'block';
+        } else {
+            alert('No se encontraron títulos.');
+        }
+        // Autocompletar autores
+        authorDatalist.innerHTML = '';
+        Array.from(authors).forEach(author => {
+            const option = document.createElement('option');
+            option.value = author;
+            authorDatalist.appendChild(option);
+        });
+    } catch (e) {
+        alert('Error buscando títulos.');
     }
-    // Buscar la mejor sugerencia que empiece por el texto actual (case-insensitive)
-    const lower = title.toLowerCase();
-    const match = titleSuggestions.find(s => s.toLowerCase().startsWith(lower) && s.length > title.length);
-    if (match) {
-        // Medir el ancho del texto ya escrito para posicionar el ghost
-        const span = document.createElement('span');
-        span.style.visibility = 'hidden';
-        span.style.position = 'absolute';
-        span.style.whiteSpace = 'pre';
-        span.style.fontFamily = getComputedStyle(titleInput).fontFamily;
-        span.style.fontSize = getComputedStyle(titleInput).fontSize;
-        span.style.fontWeight = getComputedStyle(titleInput).fontWeight;
-        span.style.letterSpacing = getComputedStyle(titleInput).letterSpacing;
-        span.textContent = title;
-        document.body.appendChild(span);
-        const offset = span.offsetWidth;
-        document.body.removeChild(span);
-        titleGhost.style.left = (offset + 7) + 'px'; // 7px = input padding - 5px para acercar
-        titleGhost.textContent = match.substring(title.length);
-        titleGhost.style.display = 'flex';
-    } else {
-        titleGhost.textContent = '';
-        titleGhost.style.display = 'none';
-        titleGhost.style.left = '0';
+};
+
+// Ocultar el desplegable si se hace clic fuera
+document.addEventListener('click', function(e) {
+    if (!titleDropdown.contains(e.target) && e.target !== findTitleBtn && e.target !== titleInput) {
+        titleDropdown.style.display = 'none';
     }
 });
 
@@ -100,6 +113,7 @@ let isMultiSelectMode = false;
 let selectedBookIds = [];
 // ========================
 // BUSCAR PORTADA AUTOMÁTICA EN MODAL
+
 document.getElementById('findCoverBtn').onclick = async function() {
     const title = document.getElementById('title').value;
     const author = document.getElementById('author').value;
@@ -107,42 +121,50 @@ document.getElementById('findCoverBtn').onclick = async function() {
     const coverModal = document.getElementById('coverModal');
     coverOptions.innerHTML = '';
     if (!title) return alert('Introduce el título');
-    // Llama a Google Books API con idioma español
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=intitle:${encodeURIComponent(title)}+inauthor:${encodeURIComponent(author)}&langRestrict=es`);
+    // Llama a Google Books API con idioma español y API Key
+    const apiKey = 'AIzaSyBW_Ty8_piPXRzab2UOvwyk5G3Pimq73g0';
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=intitle:${encodeURIComponent(title)}+inauthor:${encodeURIComponent(author)}&langRestrict=es&maxResults=10&key=${apiKey}`);
     const data = await res.json();
     coverModal.style.display = 'flex';
     if (data.items && data.items.length > 0) {
         let found = false;
         data.items.forEach(item => {
-            const img = item.volumeInfo.imageLinks?.thumbnail || item.volumeInfo.imageLinks?.smallThumbnail;
-            if (img) {
-                found = true;
-                let imgUrl = img.replace('http:', 'https:');
-                // Reemplazar cualquier parámetro zoom=1 por zoom=3 en la URL (aunque esté en medio de otros parámetros)
+            let imgs = [];
+            const links = item.volumeInfo.imageLinks || {};
+            // Recoger todas las variantes disponibles
+            if (links.thumbnail) imgs.push({url: links.thumbnail, label: 'Thumbnail'});
+            if (links.smallThumbnail && links.smallThumbnail !== links.thumbnail) imgs.push({url: links.smallThumbnail, label: 'Small'});
+            if (links.medium) imgs.push({url: links.medium, label: 'Medium'});
+            if (links.large) imgs.push({url: links.large, label: 'Large'});
+            if (links.extraLarge) imgs.push({url: links.extraLarge, label: 'XLarge'});
+            if (imgs.length === 0) {
+                imgs.push({url: 'https://via.placeholder.com/160x240/eee6d0/3e2c18?text=Sin+Portada', label: 'Sin portada'});
+            }
+            imgs.forEach(imgObj => {
+                let imgUrl = imgObj.url.replace('http:', 'https:');
                 imgUrl = imgUrl.replace(/([&?])zoom=1(?=&|$)/g, '$1zoom=3');
                 const imgElem = document.createElement('img');
                 imgElem.src = imgUrl;
-                imgElem.alt = item.volumeInfo.title;
+                imgElem.alt = item.volumeInfo.title + ' - ' + imgObj.label;
                 imgElem.style.width = '80px';
                 imgElem.style.height = '120px';
                 imgElem.style.cursor = 'pointer';
-                imgElem.title = 'Elegir esta portada';
+                imgElem.title = 'Elegir esta portada (' + imgObj.label + ')';
                 imgElem.onclick = () => {
                     const coverInput = document.getElementById('cover');
                     coverInput.value = imgUrl;
                     coverModal.style.display = 'none';
-                    // Enfocar y seleccionar el campo para permitir edición manual
                     coverInput.focus();
                     coverInput.select();
                 };
                 coverOptions.appendChild(imgElem);
-            }
+            });
         });
-        if (!found) {
+        if (data.items.length === 0) {
             coverOptions.innerHTML = '<span style="color: #c00">No se encontraron portadas.</span>';
         }
     } else {
-        coverOptions.innerHTML = '<span style=\"color: #c00\">No se encontró el libro.</span>';
+        coverOptions.innerHTML = '<span style="color: #c00">No se encontró el libro.</span>';
     }
 };
 
@@ -165,10 +187,44 @@ document.getElementById('coverModal').addEventListener('click', function(e) {
 
 // deleteAllBooks, deleteAllSagas, addBook, addSaga, getSagas deben estar en window o importados
 
-let library = JSON.parse(localStorage.getItem('myLibraryStorageV2')) || { books: [], sagas: [] };
+let library = { books: [], sagas: [] };
+
+async function loadLibraryFromSupabase() {
+    if (!currentUser) return;
+    try {
+        const books = await getBooks(currentUser.id);
+        const sagas = await getSagas(currentUser.id);
+        // Relacionar libros con sagas
+        sagas.forEach(saga => {
+            saga.books = books.filter(b => b.saga_id === saga.id);
+        });
+        library.books = books.filter(b => !b.saga_id);
+        library.sagas = sagas;
+        render();
+    } catch (e) {
+        console.error('Error cargando datos de Supabase:', e);
+    }
+}
+
+// Llamar a la función de carga al iniciar
+window.addEventListener('DOMContentLoaded', loadLibraryFromSupabase);
 // Mantener listas de IDs eliminados para sincronizar con Supabase
-let deletedBookIds = JSON.parse(localStorage.getItem('deletedBookIds') || '[]');
-let deletedSagaIds = JSON.parse(localStorage.getItem('deletedSagaIds') || '[]');
+// Flag de procedencia: los objetos cargados desde Supabase llevarán fromSupabase = true.
+// Además, guardamos "claves" de libros borrados por título+autor+saga para limpiar cualquier copia remota.
+
+// Función helper para generar siempre la misma clave de libro (normalizada)
+function makeBookKey(title, author, sagaId) {
+    const t = (title || '').trim().toLowerCase();
+    const a = (author || '').trim().toLowerCase();
+    const s = sagaId ? String(sagaId).trim().toLowerCase() : 'null';
+    return `${t}|${a}|${s}`;
+}
+
+// Lista de claves de libros que queremos forzar a ignorar/limpiar siempre.
+// (Caso concreto reportado por el usuario)
+const BLOCKED_BOOK_KEYS = [
+    makeBookKey('El arte de ser nosotros', 'Inma Rubiales', null),
+];
 // Migración: asegurar que todos los libros y sagas tengan el flag dirty (por defecto false)
 if (library.books) {
     library.books.forEach(b => { if (b.dirty === undefined) b.dirty = false; });
@@ -297,28 +353,31 @@ logoutBtn.onclick = async () => {
 
 // Cargar libros desde Supabase
 async function loadBooksFromSupabase() {
-            // Limpiar duplicados en Supabase (por título+autor+sagaId) al cargar
-            try {
-                const allBooks = await getBooks(currentUser.id);
-                const bookGroups = {};
-                for (const b of allBooks) {
-                    const key = (b.title + '|' + b.author + '|' + (b.saga_id || 'null')).toLowerCase();
-                    if (!bookGroups[key]) bookGroups[key] = [];
-                    bookGroups[key].push(b);
-                }
-                for (const key in bookGroups) {
-                    const group = bookGroups[key];
-                    if (group.length > 1) {
-                        group.sort((a, b) => a.id - b.id);
-                        for (let i = 1; i < group.length; i++) {
-                            try { await deleteBook(group[i].id); } catch (e) { console.error('Error borrando duplicado remoto (load):', e); }
-                        }
-                    }
-                }
-            } catch (e) { console.error('Error limpiando duplicados remotos (load):', e); }
+    // Limpiar duplicados en Supabase (por título+autor+sagaId) al cargar, sin preguntar
     try {
-        const booksData = await getBooks(currentUser.id);
+        const allBooks = await getBooks(currentUser.id);
+        const bookGroups = {};
+        for (const b of allBooks) {
+            const key = (b.title + '|' + b.author + '|' + (b.saga_id || 'null')).toLowerCase();
+            if (!bookGroups[key]) bookGroups[key] = [];
+            bookGroups[key].push(b);
+        }
+        for (const key in bookGroups) {
+            const group = bookGroups[key];
+            if (group.length > 1) {
+                // Mantener solo el más antiguo y borrar el resto
+                group.sort((a, b) => a.id - b.id);
+                for (let i = 1; i < group.length; i++) {
+                    try { await window.supaDeleteBook(group[i].id); } catch (e) { console.error('Error borrando duplicado remoto (load):', e); }
+                }
+            }
+        }
+    } catch (e) { console.error('Error limpiando duplicados remotos (load):', e); }
+    try {
+        let booksData = await getBooks(currentUser.id);
         const sagasData = await getSagas(currentUser.id);
+
+        // ...existing code...
         
         // 1. Ordenar y crear sagas
         library.sagas = sagasData
@@ -343,7 +402,7 @@ async function loadBooksFromSupabase() {
         // Deduplicar por id y por clave compuesta
         const seenBookKeys = new Set();
         for (const b of booksData) {
-            const key = (b.title + '|' + b.author + '|' + (b.saga_id || 'null')).toLowerCase();
+            const key = makeBookKey(b.title, b.author, b.saga_id);
             if (seenBookKeys.has(key)) continue;
             seenBookKeys.add(key);
             const book = {
@@ -355,7 +414,9 @@ async function loadBooksFromSupabase() {
                 readDate: b.read_date,
                 opinion: b.opinion,
                 isPending: b.is_pending,
-                order: b.order ?? 0
+                order: b.order ?? 0,
+                fromSupabase: true,
+                dirty: false
             };
             if (b.saga_id && sagaBooksMap[b.saga_id]) {
                 sagaBooksMap[b.saga_id].push(book);
@@ -437,46 +498,56 @@ const sortable = new Sortable(mainGrid, {
 function save(shouldRender = true) {
     // Guardar en localStorage (backup local)
     localStorage.setItem('myLibraryStorageV2', JSON.stringify(library));
-    localStorage.setItem('deletedBookIds', JSON.stringify(deletedBookIds));
-    localStorage.setItem('deletedSagaIds', JSON.stringify(deletedSagaIds));
-    
-    // Guardar en Supabase si hay sesión activa
+
+    // Solo sincronizar si hay cambios sucios o eliminaciones pendientes
+    let hasDirty = false;
     if (isUsingSupabase && currentUser) {
-        syncToSupabase().catch(err => console.error('Error sincronizando:', err));
+        // Revisar si hay libros o sagas dirty
+        for (const b of library.books) if (b.dirty) { hasDirty = true; break; }
+        if (!hasDirty) {
+            for (const s of library.sagas) {
+                if (s.dirty) { hasDirty = true; break; }
+                if (s.books) for (const b of s.books) if (b.dirty) { hasDirty = true; break; }
+                if (hasDirty) break;
+            }
+        }
+        if (hasDirty) {
+            syncToSupabase().catch(err => console.error('Error sincronizando:', err));
+        }
     }
-    
+
     if (shouldRender) render();
     updateStats();
 }
 
 // Sincronizar library con Supabase
 async function syncToSupabase() {
-                // 0. Limpiar duplicados en Supabase (por título+autor+sagaId)
-                try {
-                    const allBooks = await getBooks(currentUser.id);
-                    const bookGroups = {};
-                    for (const b of allBooks) {
-                        const key = (b.title + '|' + b.author + '|' + (b.saga_id || 'null')).toLowerCase();
-                        if (!bookGroups[key]) bookGroups[key] = [];
-                        bookGroups[key].push(b);
-                    }
-                    for (const key in bookGroups) {
-                        const group = bookGroups[key];
-                        if (group.length > 1) {
-                            // Ordenar por id para dejar el más antiguo
-                            group.sort((a, b) => a.id - b.id);
-                            // Eliminar todos menos el primero
-                            for (let i = 1; i < group.length; i++) {
-                                try { await deleteBook(group[i].id); } catch (e) { console.error('Error borrando duplicado remoto:', e); }
-                            }
-                        }
-                    }
-                } catch (e) { console.error('Error limpiando duplicados remotos:', e); }
+    // 0. Limpiar duplicados en Supabase (por título+autor+sagaId), sin preguntar,
+    //    y aplicar también las "claves" de libros borrados (título+autor+saga).
+    try {
+        const allBooks = await getBooks(currentUser.id);
+        const bookGroups = {};
+        for (const b of allBooks) {
+            const key = makeBookKey(b.title, b.author, b.saga_id);
+            if (!bookGroups[key]) bookGroups[key] = [];
+            bookGroups[key].push(b);
+        }
+        for (const key in bookGroups) {
+            const group = bookGroups[key];
+            if (group.length > 1) {
+                group.sort((a, b) => a.id - b.id);
+                for (let i = 1; i < group.length; i++) {
+                    try { await window.supaDeleteBook(group[i].id); } catch (e) { console.error('Error borrando duplicado remoto:', e); }
+                }
+            }
+        }
+
+    } catch (e) { console.error('Error limpiando duplicados remotos:', e); }
             // Deduplicar antes de subir: solo un libro por título+autor+sagaId
             function dedupBooksArr(arr) {
                 const seen = new Set();
                 return arr.filter(b => {
-                    const key = (b.title + '|' + b.author + '|' + (b.sagaId || b.saga_id || 'null')).toLowerCase();
+                    const key = makeBookKey(b.title, b.author, b.sagaId || b.saga_id || null);
                     if (seen.has(key)) return false;
                     seen.add(key);
                     return true;
@@ -486,19 +557,7 @@ async function syncToSupabase() {
             for (const saga of library.sagas) {
                 saga.books = dedupBooksArr(saga.books);
             }
-        // 0. Eliminar en Supabase los libros y sagas borrados localmente
-        for (const bookId of deletedBookIds) {
-            if (bookId && String(bookId).length > 8) {
-                try { await deleteBook(bookId); } catch (e) { console.error('Error borrando libro remoto:', e); }
-            }
-        }
-        for (const sagaId of deletedSagaIds) {
-            if (sagaId && String(sagaId).length > 8) {
-                try { await deleteSaga(sagaId); } catch (e) { console.error('Error borrando saga remota:', e); }
-            }
-        }
-        deletedBookIds = [];
-        deletedSagaIds = [];
+        // (No hay listas locales de eliminados; las eliminaciones se ejecutan inmediatamente)
     if (!currentUser) return;
     console.log('📤 Sincronizando solo entidades sucias con Supabase...');
     try {
@@ -506,11 +565,12 @@ async function syncToSupabase() {
         for (let i = 0; i < library.sagas.length; i++) {
             const saga = library.sagas[i];
             if (saga.dirty) {
-                if (saga.id && String(saga.id).length > 8) {
+                if (saga.fromSupabase) {
                     await updateSaga(saga.id, { name: saga.name, order: i });
                 } else {
                     const [newSaga] = await addSaga({ name: saga.name, order: i }, currentUser.id);
                     saga.id = newSaga.id;
+                    saga.fromSupabase = true;
                 }
                 saga.dirty = false;
             }
@@ -519,11 +579,12 @@ async function syncToSupabase() {
         for (let i = 0; i < library.books.length; i++) {
             const book = library.books[i];
             if (book.dirty) {
-                if (book.id && String(book.id).length > 8) {
+                if (book.fromSupabase) {
                     await updateBook(book.id, { ...book, sagaId: null, order: i });
                 } else {
                     const [newBook] = await addBook({ ...book, sagaId: null, order: i }, currentUser.id);
                     book.id = newBook.id;
+                    book.fromSupabase = true;
                 }
                 book.dirty = false;
             }
@@ -533,11 +594,12 @@ async function syncToSupabase() {
             for (let i = 0; i < saga.books.length; i++) {
                 const book = saga.books[i];
                 if (book.dirty) {
-                    if (book.id && String(book.id).length > 8) {
+                    if (book.fromSupabase) {
                         await updateBook(book.id, { ...book, sagaId: saga.id, order: i });
                     } else {
                         const [newBook] = await addBook({ ...book, sagaId: saga.id, order: i }, currentUser.id);
                         book.id = newBook.id;
+                        book.fromSupabase = true;
                     }
                     book.dirty = false;
                 }
@@ -565,24 +627,135 @@ function importFromClipboard() {
         try {
             const parsed = JSON.parse(data);
             if (parsed.books && parsed.sagas) {
-                if (confirm("¿Quieres sobrescribir tu biblioteca actual con los datos pegados?")) {
-                    library = parsed;
-                    // Marcar todos los libros y sagas como dirty para forzar sincronización
-                    if (library.books) library.books.forEach(b => b.dirty = true);
-                    if (library.sagas) {
-                        library.sagas.forEach(s => {
-                            s.dirty = true;
-                            if (s.books) s.books.forEach(b => b.dirty = true);
-                        });
-                    }
-                    save();
-                    // Si hay sesión y Supabase activo, sincronizar
+                if (confirm("¿Quieres sobrescribir tu biblioteca actual y la base de datos con los datos pegados?")) {
+                    // Si hay sesión y Supabase activo, sincronizar TODO desde cero
                     if (isUsingSupabase && currentUser) {
-                        syncToSupabase().then(() => {
-                            alert("¡Importación y sincronización con la base de datos completadas!");
-                        }).catch(err => {
-                            alert("Error al sincronizar con Supabase: " + err.message);
-                        });
+                        (async () => {
+                            try {
+                                console.log('[IMPORT] Borrando todos los libros y sagas en Supabase...');
+                                await deleteAllBooks(currentUser.id);
+                                await deleteAllSagas(currentUser.id);
+                                console.log('[IMPORT] Borrado completado. Insertando sagas...');
+                                // 2. Insertar sagas y guardar el mapping de IDs
+                                const sagaIdMap = {};
+                                for (const saga of parsed.sagas) {
+                                    const sagaData = { name: saga.name, order: saga.order || 0, user_id: currentUser.id };
+                                    let sagaResult, sagaError = null;
+                                    try {
+                                        sagaResult = await addSaga(sagaData, currentUser.id);
+                                    } catch (e) {
+                                        sagaError = e;
+                                    }
+                                    if (!sagaResult || !sagaResult[0] || !sagaResult[0].id) {
+                                        alert('Error insertando saga: ' + saga.name + '\n' + (sagaError ? sagaError.message : JSON.stringify(sagaResult)));
+                                        console.error('[IMPORT] Error insertando saga:', saga, sagaResult, sagaError);
+                                        continue;
+                                    }
+                                    const newSaga = sagaResult[0];
+                                    sagaIdMap[saga.id] = newSaga.id;
+                                    saga._newId = newSaga.id;
+                                    alert(`[IMPORT] Saga insertada: ${saga.name} -> ${newSaga.id}`);
+                                    console.log(`[IMPORT] Saga insertada: ${saga.name} -> ${newSaga.id}`);
+                                }
+                                // 3. Insertar libros sueltos (sin saga)
+                                const newBooks = [];
+                                for (const book of parsed.books) {
+                                    const mappedBook = {
+                                        title: book.title,
+                                        author: book.author,
+                                        cover: book.cover,
+                                        rating: book.rating,
+                                        readDate: book.readDate || null,
+                                        opinion: book.opinion || null,
+                                        isPending: book.isPending || false,
+                                        sagaId: null,
+                                        order: book.order || 0,
+                                        user_id: currentUser.id
+                                    };
+                                    let bookResult, bookError = null;
+                                    try {
+                                        bookResult = await addBook(mappedBook, currentUser.id);
+                                    } catch (e) {
+                                        bookError = e;
+                                    }
+                                    if (!bookResult || !bookResult[0] || !bookResult[0].id) {
+                                        alert('Error insertando libro: ' + book.title + '\n' + (bookError ? bookError.message : JSON.stringify(bookResult)));
+                                        console.error('[IMPORT] Error insertando libro:', book, bookResult, bookError);
+                                        continue;
+                                    }
+                                    const newBook = bookResult[0];
+                                    newBooks.push({ ...book, id: newBook.id });
+                                    alert(`[IMPORT] Libro insertado: ${book.title} -> ${newBook.id}`);
+                                    console.log(`[IMPORT] Libro insertado: ${book.title} -> ${newBook.id}`);
+                                }
+                                // 4. Insertar libros de sagas
+                                for (const saga of parsed.sagas) {
+                                    if (!saga.books) continue;
+                                    for (const book of saga.books) {
+                                        const mappedBook = {
+                                            title: book.title,
+                                            author: book.author,
+                                            cover: book.cover,
+                                            rating: book.rating,
+                                            readDate: book.readDate || null,
+                                            opinion: book.opinion || null,
+                                            isPending: book.isPending || false,
+                                            sagaId: sagaIdMap[saga.id],
+                                            order: book.order || 0,
+                                            user_id: currentUser.id
+                                        };
+                                        let bookResult, bookError = null;
+                                        try {
+                                            bookResult = await addBook(mappedBook, currentUser.id);
+                                        } catch (e) {
+                                            bookError = e;
+                                        }
+                                        if (!bookResult || !bookResult[0] || !bookResult[0].id) {
+                                            alert('Error insertando libro en saga: ' + book.title + '\n' + (bookError ? bookError.message : JSON.stringify(bookResult)));
+                                            console.error('[IMPORT] Error insertando libro en saga:', book, bookResult, bookError);
+                                            continue;
+                                        }
+                                        const newBook = bookResult[0];
+                                        book._newId = newBook.id;
+                                        alert(`[IMPORT] Libro de saga insertado: ${book.title} -> ${newBook.id}`);
+                                        console.log(`[IMPORT] Libro de saga insertado: ${book.title} -> ${newBook.id}`);
+                                    }
+                                }
+                                // 5. Reconstruir library local con nuevos IDs
+                                const newLibrary = { books: [], sagas: [] };
+                                for (const b of newBooks) {
+                                    newLibrary.books.push({ ...b });
+                                }
+                                for (const saga of parsed.sagas) {
+                                    const sagaBooks = [];
+                                    if (saga.books) {
+                                        for (const book of saga.books) {
+                                            sagaBooks.push({ ...book, id: book._newId });
+                                        }
+                                    }
+                                    newLibrary.sagas.push({
+                                        id: saga._newId,
+                                        name: saga.name,
+                                        order: saga.order || 0,
+                                        books: sagaBooks
+                                    });
+                                }
+                                library = newLibrary;
+                                save();
+                                alert("¡Importación y sincronización con la base de datos completadas!");
+                                console.log('[IMPORT] Sincronización finalizada. Nuevo estado:', library);
+                                render();
+                            } catch (err) {
+                                alert("Error al sincronizar con Supabase: " + (err.message || err));
+                                console.error('[IMPORT] Error general:', err);
+                            }
+                        })();
+                    } else {
+                        // Solo local
+                        library = parsed;
+                        save();
+                        alert("¡Importación local completada!");
+                        render();
                     }
                 }
             } else {
@@ -632,7 +805,7 @@ function render(searchText = '') {
 
         library.sagas
             .filter(s => s.name.toLowerCase().includes(search))
-            .filter(s => s.books.some(b => shouldShowBook(b)))
+            .filter(s => (Array.isArray(s.books) && s.books.length === 0) || (s.books && s.books.some(b => shouldShowBook(b))))
             .forEach(saga => {
                 const card = document.createElement('div');
                 card.className = 'saga-card';
@@ -742,7 +915,7 @@ function createBookCard(book, isInsideSaga) {
             <div id=\"opinion-${book.id}\"></div>
             <div class=\"card-actions\"> 
                 <button class=\"action-btn edit-btn\" onclick=\"openEditBook(event, ${book.id}, ${isInsideSaga})\">Editar</button>
-                <button class=\"action-btn delete-btn\" onclick=\"deleteBook(event, ${book.id}, ${isInsideSaga})\">Borrar</button>
+                <button class=\"action-btn delete-btn\" onclick=\"this.remove();deleteBook(event, ${book.id}, ${isInsideSaga})\">Borrar</button>
             </div>
         </div>
     `;
@@ -870,47 +1043,115 @@ document.getElementById('sagaForm').onsubmit = (e) => {
 // ========================
 // FUNCIONES DE BORRADO
 // ========================
-function deleteBook(e, id, isInsideSaga) {
-    e.stopPropagation();
+async function deleteBook(e, id, isInsideSaga) {
+    if (e && typeof e.stopPropagation === 'function') {
+        e.stopPropagation();
+    }
+    if (typeof id !== 'number' || id <= 0) {
+        console.warn('[BORRADO] ID de libro inválido:', id);
+        return;
+    }
     if (!confirm("¿Borrar este libro?")) return;
+    console.log('[BORRADO] deleteBook llamado con id:', id, 'isInsideSaga:', isInsideSaga);
     let bookIdToDelete = null;
+    let idx = -1;
+    let saga = null;
     if (isInsideSaga) {
-        const saga = library.sagas.find(s => s.id === currentSagaId);
-        const idx = saga.books.findIndex(b => b.id === id);
-        if (idx !== -1) {
-            bookIdToDelete = saga.books[idx].id;
-            saga.books.splice(idx, 1);
+        saga = library.sagas.find(s => s.id === currentSagaId);
+        idx = saga ? saga.books.findIndex(b => b.id === id) : -1;
+        console.log('[BORRADO] Saga encontrada:', saga, 'Índice libro:', idx);
+        if (idx === -1) {
+            console.warn('[BORRADO] Libro no encontrado en saga');
+            return;
+        }
+        bookIdToDelete = saga.books[idx].id;
+    } else {
+        idx = library.books.findIndex(b => b.id === id);
+        console.log('[BORRADO] Índice libro fuera de saga:', idx);
+        if (idx === -1) {
+            console.warn('[BORRADO] Libro no encontrado en library');
+            return;
+        }
+        bookIdToDelete = library.books[idx].id;
+    }
+    if (typeof bookIdToDelete === 'number' && bookIdToDelete > 0) {
+        console.log('[BORRADO] Enviando petición a Supabase para borrar libro:', bookIdToDelete);
+        if (typeof window.supaDeleteBook === 'function') {
+            try {
+                await window.supaDeleteBook(bookIdToDelete);
+                console.log('[BORRADO] Libro borrado en Supabase:', bookIdToDelete);
+                // Solo eliminar localmente si el borrado remoto fue exitoso
+                if (isInsideSaga && saga && idx !== -1) {
+                    saga.books.splice(idx, 1);
+                    console.log('[BORRADO] Libro borrado de saga:', bookIdToDelete);
+                } else if (!isInsideSaga && idx !== -1) {
+                    library.books.splice(idx, 1);
+                    console.log('[BORRADO] Libro borrado de library:', bookIdToDelete);
+                }
+                save();
+            } catch (e) {
+                console.error('[BORRADO] Error borrando libro remoto:', e);
+                alert('Error borrando libro en base de datos: ' + (e.message || e));
+            }
+        } else {
+            console.error('[BORRADO] window.supaDeleteBook no es una función');
         }
     } else {
-        const idx = library.books.findIndex(b => b.id === id);
-        if (idx !== -1) {
-            bookIdToDelete = library.books[idx].id;
-            library.books.splice(idx, 1);
-        }
+        console.warn('[BORRADO] No se encontró bookIdToDelete válido para borrar en Supabase');
     }
-    if (bookIdToDelete && String(bookIdToDelete).length > 8) {
-        deletedBookIds.push(bookIdToDelete);
-    }
-    save();
 }
 
-function deleteSaga(e, id) {
-    e.stopPropagation();
+async function deleteSaga(e, id) {
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+    console.log('[BORRADO] deleteSaga llamado con id:', id);
     if (!confirm("¿Borrar saga y todos sus libros?")) return;
     const idx = library.sagas.findIndex(s => s.id === id);
-    if (idx !== -1) {
-        const sagaIdToDelete = library.sagas[idx].id;
-        // También eliminar todos los libros de la saga
-        for (const book of library.sagas[idx].books) {
-            if (book.id && String(book.id).length > 8) {
-                deletedBookIds.push(book.id);
+    console.log('[BORRADO] Índice saga:', idx);
+    if (idx === -1) {
+        console.warn('[BORRADO] No se encontró saga para borrar en Supabase');
+        return;
+    }
+
+    const saga = library.sagas[idx];
+    const sagaIdToDelete = saga.id;
+
+    // Eliminar todos los libros de la saga en Supabase (secuencialmente para manejar errores y logs)
+    if (Array.isArray(saga.books)) {
+        for (const book of saga.books) {
+            if (book && book.id) {
+                console.log('[BORRADO] Enviando petición a Supabase para borrar libro de saga:', book.id);
+                if (typeof window.supaDeleteBook === 'function') {
+                    try {
+                        await window.supaDeleteBook(book.id);
+                        console.log('[BORRADO] Libro de saga borrado en Supabase:', book.id);
+                    } catch (err) {
+                        console.error('[BORRADO] Error borrando libro remoto:', err);
+                        alert('Error borrando libro de saga en base de datos: ' + (err.message || err));
+                    }
+                } else {
+                    console.error('[BORRADO] window.supaDeleteBook no es una función');
+                }
             }
         }
-        if (sagaIdToDelete && String(sagaIdToDelete).length > 8) {
-            deletedSagaIds.push(sagaIdToDelete);
-        }
-        library.sagas.splice(idx, 1);
     }
+
+    // Eliminar la saga en Supabase
+    if (sagaIdToDelete) {
+        console.log('[BORRADO] Enviando petición a Supabase para borrar saga:', sagaIdToDelete);
+        if (typeof window.supaDeleteSaga === 'function') {
+            try {
+                await window.supaDeleteSaga(sagaIdToDelete);
+                console.log('[BORRADO] Saga borrada en Supabase:', sagaIdToDelete);
+            } catch (err) {
+                console.error('[BORRADO] Error borrando saga remota:', err);
+                alert('Error borrando saga en base de datos: ' + (err.message || err));
+            }
+        } else {
+            console.error('[BORRADO] window.supaDeleteSaga no es una función');
+        }
+    }
+
+    library.sagas.splice(idx, 1);
     save();
 }
 

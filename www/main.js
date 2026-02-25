@@ -169,6 +169,23 @@ let library = JSON.parse(localStorage.getItem('myLibraryStorageV2')) || { books:
 // Mantener listas de IDs eliminados para sincronizar con Supabase
 let deletedBookIds = JSON.parse(localStorage.getItem('deletedBookIds') || '[]');
 let deletedSagaIds = JSON.parse(localStorage.getItem('deletedSagaIds') || '[]');
+// Flag de procedencia: los objetos cargados desde Supabase llevarán fromSupabase = true.
+// Además, guardamos "claves" de libros borrados por título+autor+saga para limpiar cualquier copia remota.
+let deletedBookKeys = JSON.parse(localStorage.getItem('deletedBookKeys') || '[]');
+
+// Función helper para generar siempre la misma clave de libro (normalizada)
+function makeBookKey(title, author, sagaId) {
+    const t = (title || '').trim().toLowerCase();
+    const a = (author || '').trim().toLowerCase();
+    const s = sagaId ? String(sagaId).trim().toLowerCase() : 'null';
+    return `${t}|${a}|${s}`;
+}
+
+// Lista de claves de libros que queremos forzar a ignorar/limpiar siempre.
+// (Caso concreto reportado por el usuario)
+const BLOCKED_BOOK_KEYS = [
+    makeBookKey('El arte de ser nosotros', 'Inma Rubiales', null),
+];
 // Migración: asegurar que todos los libros y sagas tengan el flag dirty (por defecto false)
 if (library.books) {
     library.books.forEach(b => { if (b.dirty === undefined) b.dirty = false; });
@@ -297,28 +314,38 @@ logoutBtn.onclick = async () => {
 
 // Cargar libros desde Supabase
 async function loadBooksFromSupabase() {
-            // Limpiar duplicados en Supabase (por título+autor+sagaId) al cargar
-            try {
-                const allBooks = await getBooks(currentUser.id);
-                const bookGroups = {};
-                for (const b of allBooks) {
-                    const key = (b.title + '|' + b.author + '|' + (b.saga_id || 'null')).toLowerCase();
-                    if (!bookGroups[key]) bookGroups[key] = [];
-                    bookGroups[key].push(b);
-                }
-                for (const key in bookGroups) {
-                    const group = bookGroups[key];
-                    if (group.length > 1) {
-                        group.sort((a, b) => a.id - b.id);
-                        for (let i = 1; i < group.length; i++) {
-                            try { await deleteBook(group[i].id); } catch (e) { console.error('Error borrando duplicado remoto (load):', e); }
-                        }
-                    }
-                }
-            } catch (e) { console.error('Error limpiando duplicados remotos (load):', e); }
+    // Limpiar duplicados en Supabase (por título+autor+sagaId) al cargar, sin preguntar
     try {
-        const booksData = await getBooks(currentUser.id);
+        const allBooks = await getBooks(currentUser.id);
+        const bookGroups = {};
+        for (const b of allBooks) {
+            const key = (b.title + '|' + b.author + '|' + (b.saga_id || 'null')).toLowerCase();
+            if (!bookGroups[key]) bookGroups[key] = [];
+            bookGroups[key].push(b);
+        }
+        for (const key in bookGroups) {
+            const group = bookGroups[key];
+            if (group.length > 1) {
+                group.sort((a, b) => a.id - b.id);
+                for (let i = 1; i < group.length; i++) {
+                    try { await deleteBook(group[i].id); } catch (e) { console.error('Error borrando duplicado remoto (load):', e); }
+                }
+            }
+        }
+    } catch (e) { console.error('Error limpiando duplicados remotos (load):', e); }
+    try {
+        let booksData = await getBooks(currentUser.id);
         const sagasData = await getSagas(currentUser.id);
+        
+        // Filtrar libros que el usuario ha marcado como borrados por clave (título+autor+saga)
+        // y también los que estén en la lista BLOCKED_BOOK_KEYS
+        if (deletedBookKeys.length > 0 || BLOCKED_BOOK_KEYS.length > 0) {
+            const deletedKeysSet = new Set([...deletedBookKeys, ...BLOCKED_BOOK_KEYS]);
+            booksData = booksData.filter(b => {
+                const key = makeBookKey(b.title, b.author, b.saga_id);
+                return !deletedKeysSet.has(key);
+            });
+        }
         
         // 1. Ordenar y crear sagas
         library.sagas = sagasData
@@ -343,7 +370,7 @@ async function loadBooksFromSupabase() {
         // Deduplicar por id y por clave compuesta
         const seenBookKeys = new Set();
         for (const b of booksData) {
-            const key = (b.title + '|' + b.author + '|' + (b.saga_id || 'null')).toLowerCase();
+            const key = makeBookKey(b.title, b.author, b.saga_id);
             if (seenBookKeys.has(key)) continue;
             seenBookKeys.add(key);
             const book = {
@@ -355,7 +382,9 @@ async function loadBooksFromSupabase() {
                 readDate: b.read_date,
                 opinion: b.opinion,
                 isPending: b.is_pending,
-                order: b.order ?? 0
+                order: b.order ?? 0,
+                fromSupabase: true,
+                dirty: false
             };
             if (b.saga_id && sagaBooksMap[b.saga_id]) {
                 sagaBooksMap[b.saga_id].push(book);
@@ -453,30 +482,30 @@ function save(shouldRender = true) {
 async function syncToSupabase() {
                 // 0. Limpiar duplicados en Supabase (por título+autor+sagaId)
                 try {
-                    const allBooks = await getBooks(currentUser.id);
-                    const bookGroups = {};
-                    for (const b of allBooks) {
-                        const key = (b.title + '|' + b.author + '|' + (b.saga_id || 'null')).toLowerCase();
-                        if (!bookGroups[key]) bookGroups[key] = [];
-                        bookGroups[key].push(b);
-                    }
-                    for (const key in bookGroups) {
-                        const group = bookGroups[key];
-                        if (group.length > 1) {
-                            // Ordenar por id para dejar el más antiguo
-                            group.sort((a, b) => a.id - b.id);
-                            // Eliminar todos menos el primero
-                            for (let i = 1; i < group.length; i++) {
-                                try { await deleteBook(group[i].id); } catch (e) { console.error('Error borrando duplicado remoto:', e); }
-                            }
-                        }
-                    }
+        const allBooks = await getBooks(currentUser.id);
+        const bookGroups = {};
+        for (const b of allBooks) {
+            const key = makeBookKey(b.title, b.author, b.saga_id);
+            if (!bookGroups[key]) bookGroups[key] = [];
+            bookGroups[key].push(b);
+        }
+        for (const key in bookGroups) {
+            const group = bookGroups[key];
+            if (group.length > 1) {
+                // Ordenar por id para dejar el más antiguo
+                group.sort((a, b) => a.id - b.id);
+                // Eliminar todos menos el primero
+                for (let i = 1; i < group.length; i++) {
+                    try { await deleteBook(group[i].id); } catch (e) { console.error('Error borrando duplicado remoto:', e); }
+                }
+            }
+        }
                 } catch (e) { console.error('Error limpiando duplicados remotos:', e); }
-            // Deduplicar antes de subir: solo un libro por título+autor+sagaId
+        // Deduplicar antes de subir: solo un libro por título+autor+sagaId
             function dedupBooksArr(arr) {
                 const seen = new Set();
                 return arr.filter(b => {
-                    const key = (b.title + '|' + b.author + '|' + (b.sagaId || b.saga_id || 'null')).toLowerCase();
+                    const key = makeBookKey(b.title, b.author, b.sagaId || b.saga_id || null);
                     if (seen.has(key)) return false;
                     seen.add(key);
                     return true;
@@ -488,14 +517,10 @@ async function syncToSupabase() {
             }
         // 0. Eliminar en Supabase los libros y sagas borrados localmente
         for (const bookId of deletedBookIds) {
-            if (bookId && String(bookId).length > 8) {
-                try { await deleteBook(bookId); } catch (e) { console.error('Error borrando libro remoto:', e); }
-            }
+            try { await deleteBook(bookId); } catch (e) { console.error('Error borrando libro remoto:', e); }
         }
         for (const sagaId of deletedSagaIds) {
-            if (sagaId && String(sagaId).length > 8) {
-                try { await deleteSaga(sagaId); } catch (e) { console.error('Error borrando saga remota:', e); }
-            }
+            try { await deleteSaga(sagaId); } catch (e) { console.error('Error borrando saga remota:', e); }
         }
         deletedBookIds = [];
         deletedSagaIds = [];
@@ -506,11 +531,12 @@ async function syncToSupabase() {
         for (let i = 0; i < library.sagas.length; i++) {
             const saga = library.sagas[i];
             if (saga.dirty) {
-                if (saga.id && String(saga.id).length > 8) {
+                if (saga.fromSupabase) {
                     await updateSaga(saga.id, { name: saga.name, order: i });
                 } else {
                     const [newSaga] = await addSaga({ name: saga.name, order: i }, currentUser.id);
                     saga.id = newSaga.id;
+                    saga.fromSupabase = true;
                 }
                 saga.dirty = false;
             }
@@ -519,11 +545,12 @@ async function syncToSupabase() {
         for (let i = 0; i < library.books.length; i++) {
             const book = library.books[i];
             if (book.dirty) {
-                if (book.id && String(book.id).length > 8) {
+                if (book.fromSupabase) {
                     await updateBook(book.id, { ...book, sagaId: null, order: i });
                 } else {
                     const [newBook] = await addBook({ ...book, sagaId: null, order: i }, currentUser.id);
                     book.id = newBook.id;
+                    book.fromSupabase = true;
                 }
                 book.dirty = false;
             }
@@ -533,11 +560,12 @@ async function syncToSupabase() {
             for (let i = 0; i < saga.books.length; i++) {
                 const book = saga.books[i];
                 if (book.dirty) {
-                    if (book.id && String(book.id).length > 8) {
+                    if (book.fromSupabase) {
                         await updateBook(book.id, { ...book, sagaId: saga.id, order: i });
                     } else {
                         const [newBook] = await addBook({ ...book, sagaId: saga.id, order: i }, currentUser.id);
                         book.id = newBook.id;
+                        book.fromSupabase = true;
                     }
                     book.dirty = false;
                 }
@@ -616,7 +644,7 @@ function render(searchText = '') {
 
         library.sagas
             .filter(s => s.name.toLowerCase().includes(search))
-            .filter(s => s.books.some(b => shouldShowBook(b)))
+            .filter(s => (Array.isArray(s.books) && s.books.length === 0) || (s.books && s.books.some(b => shouldShowBook(b))))
             .forEach(saga => {
                 const card = document.createElement('div');
                 card.className = 'saga-card';
@@ -858,22 +886,30 @@ function deleteBook(e, id, isInsideSaga) {
     e.stopPropagation();
     if (!confirm("¿Borrar este libro?")) return;
     let bookIdToDelete = null;
+    let bookKeyToDelete = null;
     if (isInsideSaga) {
         const saga = library.sagas.find(s => s.id === currentSagaId);
         const idx = saga.books.findIndex(b => b.id === id);
         if (idx !== -1) {
-            bookIdToDelete = saga.books[idx].id;
+            const book = saga.books[idx];
+            bookIdToDelete = book.id;
+            bookKeyToDelete = makeBookKey(book.title, book.author, saga.id);
             saga.books.splice(idx, 1);
         }
     } else {
         const idx = library.books.findIndex(b => b.id === id);
         if (idx !== -1) {
-            bookIdToDelete = library.books[idx].id;
+            const book = library.books[idx];
+            bookIdToDelete = book.id;
+            bookKeyToDelete = makeBookKey(book.title, book.author, null);
             library.books.splice(idx, 1);
         }
     }
-    if (bookIdToDelete && String(bookIdToDelete).length > 8) {
+    if (bookIdToDelete) {
         deletedBookIds.push(bookIdToDelete);
+    }
+    if (bookKeyToDelete) {
+        deletedBookKeys.push(bookKeyToDelete);
     }
     save();
 }
@@ -883,14 +919,17 @@ function deleteSaga(e, id) {
     if (!confirm("¿Borrar saga y todos sus libros?")) return;
     const idx = library.sagas.findIndex(s => s.id === id);
     if (idx !== -1) {
-        const sagaIdToDelete = library.sagas[idx].id;
+        const saga = library.sagas[idx];
+        const sagaIdToDelete = saga.id;
         // También eliminar todos los libros de la saga
-        for (const book of library.sagas[idx].books) {
-            if (book.id && String(book.id).length > 8) {
+        for (const book of saga.books) {
+            if (book.id) {
                 deletedBookIds.push(book.id);
             }
+            const key = makeBookKey(book.title, book.author, saga.id);
+            deletedBookKeys.push(key);
         }
-        if (sagaIdToDelete && String(sagaIdToDelete).length > 8) {
+        if (sagaIdToDelete) {
             deletedSagaIds.push(sagaIdToDelete);
         }
         library.sagas.splice(idx, 1);
