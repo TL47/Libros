@@ -731,6 +731,11 @@ function createBookCard(book, isInsideSaga) {
         ratingDisplay = `<div class="stars" style="color: transparent;">-</div>`; // Espacio vacío si es 0
     }
 
+    // Si el libro está marcado como pendiente, no mostrar las estrellas (ni el placeholder)
+    if (book.isPending) {
+        ratingDisplay = '';
+    }
+
     // Mostrar etiqueta "Pendiente" si está marcado, o botón para marcar como pendiente solo si no tiene valoración
     let pendingDisplay = '';
     if (book.isPending) {

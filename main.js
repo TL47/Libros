@@ -886,7 +886,9 @@ function createBookCard(book, isInsideSaga) {
     let ratingDisplay = '';
     if (book.rating == 6) {
         ratingDisplay = `<div class="status-reading">📖 Leyendo</div>`;
-    } else if (book.rating > 0 && book.rating <= 5) {
+    } else if (book.rating == 8) {
+        ratingDisplay = `<div class="status-abandoned">🚫 Abandonado</div>`;
+    }else if (book.rating > 0 && book.rating <= 5) {
         ratingDisplay = `<div class="stars">${'★'.repeat(book.rating)}${'☆'.repeat(5 - book.rating)}</div>`;
     } else {
         ratingDisplay = `<div class="stars" style="color: transparent;">-</div>`; // Espacio vacío si es 0
@@ -895,9 +897,8 @@ function createBookCard(book, isInsideSaga) {
     // Mostrar etiqueta "Pendiente" si está marcado, o botón para marcar como pendiente solo si no tiene valoración
     let pendingDisplay = '';
     if (book.isPending) {
-        pendingDisplay = `<div class="status-pending">⏳ Pendiente <button class="action-btn" style="color: var(--cloud-grey); padding: 0; margin-left: 8px; font-size: 0.7rem;" onclick="removePending(event, ${book.id}, ${isInsideSaga})">✓ Listo</button></div>`;
-    } else if (book.rating === 0) {
-        pendingDisplay = `<button class="status-btn-add" onclick="markAsPending(event, ${book.id}, ${isInsideSaga})">+ Pendiente</button>`;
+        pendingDisplay = `<div class="status-pending">⏳ Pendiente</div>`;
+        ratingDisplay = '';
     }
 
     // Crear el elemento HTML de manera segura
@@ -971,13 +972,13 @@ function openEditSaga(e, id) {
 // ========================
 // FORMULARIOS SUBMIT
 // ========================
-document.getElementById('bookForm').onsubmit = (e) => {
+document.getElementById('bookForm').onsubmit = async (e) => {
     e.preventDefault();
     const id = document.getElementById('editBookId').value;
     const title = document.getElementById('title').value;
     const author = document.getElementById('author').value;
-    
-    // VALIDACIÓN: Prevenir duplicados
+
+    // VALIDACIÓN: Prevenir duplicados al crear (no al actualizar, porque actualizaremos mediante borrar+crear)
     if (!id) {
         const isDuplicate = currentSagaId 
             ? library.sagas.find(s => s.id === currentSagaId).books.some(b => 
@@ -994,31 +995,81 @@ document.getElementById('bookForm').onsubmit = (e) => {
             return;
         }
     }
-    
+
+    // Normalizar y calcular algunos campos derivados (isPending, readDate) según la valoración
+    const ratingVal = parseInt(document.getElementById('rating').value);
+    let readDateVal = document.getElementById('readDate').value || null;
+    if (ratingVal === 6) {
+        // 'Leyendo' -> si no hay fecha, poner hoy
+        if (!readDateVal) {
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            readDateVal = `${yyyy}-${mm}-${dd}`;
+        }
+    } else if (ratingVal === 7 || ratingVal === 8) {
+        // 'Pendiente' y 'Abandonado' no deberían tener fecha de lectura
+        readDateVal = null;
+    }
+
     const bookData = {
+        // Para creación se usará un id nuevo más abajo; si no hay id aquí será Date.now() pero
+        // en la rama de actualización sobrescribiremos con un nuevo id igualmente.
         id: id ? parseInt(id) : Date.now(),
         title: title,
         author: author,
         cover: document.getElementById('cover').value,
-        rating: parseInt(document.getElementById('rating').value),
-        readDate: document.getElementById('readDate').value || null,
+        rating: ratingVal,
+        readDate: readDateVal,
+        isPending: ratingVal === 7,
         opinion: document.getElementById('opinion').value
     };
+
     if (id) {
-        // Actualizar existente
+        // Actualización: borrar el libro actual (local y remoto si procede) y crear uno nuevo
+        const oldIdNum = parseInt(id);
+        let oldFromSupabase = false;
         if (currentSagaId) {
-            let saga = library.sagas.find(s => s.id === currentSagaId);
-            let idx = saga.books.findIndex(b => b.id == id);
-            saga.books[idx] = { ...bookData, dirty: true };
+            const saga = library.sagas.find(s => s.id === currentSagaId);
+            const idx = saga ? saga.books.findIndex(b => b.id == oldIdNum) : -1;
+            if (idx !== -1) {
+                oldFromSupabase = !!saga.books[idx].fromSupabase;
+                saga.books.splice(idx, 1);
+            }
         } else {
-            let idx = library.books.findIndex(b => b.id == id);
-            library.books[idx] = { ...bookData, dirty: true };
+            const idx = library.books.findIndex(b => b.id == oldIdNum);
+            if (idx !== -1) {
+                oldFromSupabase = !!library.books[idx].fromSupabase;
+                library.books.splice(idx, 1);
+            }
+        }
+
+        // Intentar borrar remoto si el libro antiguo venía de Supabase
+        if (oldFromSupabase && typeof window.supaDeleteBook === 'function') {
+            try {
+                await window.supaDeleteBook(oldIdNum);
+            } catch (err) {
+                console.error('Error eliminando libro antiguo en Supabase durante actualización:', err);
+            }
+        }
+
+        // Crear nuevo libro (reutiliza la lógica de creación) con id nuevo
+        const newId = Date.now();
+        const newBook = { ...bookData, id: newId, dirty: true, fromSupabase: false };
+        if (currentSagaId) {
+            const saga = library.sagas.find(s => s.id === currentSagaId);
+            saga.books.push(newBook);
+        } else {
+            library.books.push(newBook);
         }
     } else {
         // Nuevo
-        if (currentSagaId) library.sagas.find(s => s.id === currentSagaId).books.push({ ...bookData, dirty: true });
-        else library.books.push({ ...bookData, dirty: true });
+        const newBook = { ...bookData, dirty: true, fromSupabase: false };
+        if (currentSagaId) library.sagas.find(s => s.id === currentSagaId).books.push(newBook);
+        else library.books.push(newBook);
     }
+
     save();
     closeModals();
     e.target.reset();

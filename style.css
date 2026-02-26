@@ -511,6 +511,20 @@ form select {
     text-transform: uppercase;
 }
 
+.status-abandoned {
+    background: #7e7878;
+    color: white;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.8rem;
+    padding: 2px 10px;
+    border-radius: 20px;
+    display: inline-block;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+}
+
+
 .status-btn-add {
     background: transparent;
     color: var(--st-pats-gold);
